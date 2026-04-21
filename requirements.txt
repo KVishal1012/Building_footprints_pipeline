@@ -1,0 +1,13 @@
+osmnx
+geopandas
+shapely
+pandas
+numpy
+certifi
+polars
+sqlalchemy
+pyodbc
+mercantile
+pyarrow
+requests
+overturemaps
