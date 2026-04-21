@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local OS/editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Pipeline data and generated outputs
+cache/
+data/raw/
+data/output/
+*.state
+
+# Large local geospatial exports
+*.parquet
+*.geoparquet
+*.gpkg
+*.geojson
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
