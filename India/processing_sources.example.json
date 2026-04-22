@@ -1,0 +1,69 @@
+{
+  "sources": [
+    {
+      "layer_type": "segmentation",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_landcover_segmentation",
+      "source_authority": "local_model_run",
+      "path": "data/processing/raw/chennai_segmentation.geojson",
+      "model_family": "SegFormer",
+      "model_name": "your-org/segformer-chennai",
+      "model_version": "v1",
+      "task": "semantic_segmentation",
+      "run_id": "chennai_segmentation_001",
+      "field_map": {
+        "Label": "class",
+        "Score": "confidence"
+      }
+    },
+    {
+      "layer_type": "change_detection",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_urban_change_2023_2026",
+      "path": "data/processing/raw/chennai_change_detection.geojson",
+      "model_family": "change_detection",
+      "model_name": "your-org/change-detection-model",
+      "run_id": "chennai_change_2023_2026_001",
+      "field_map": {
+        "Label": "change_type",
+        "Score": "confidence",
+        "DateFrom": "before_date",
+        "DateTo": "after_date"
+      }
+    },
+    {
+      "layer_type": "flood_prediction",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_flood_forecast_24h",
+      "path": "data/processing/raw/chennai_flood_24h.geojson",
+      "model_family": "ConvLSTM",
+      "model_name": "your-org/convlstm-flood-chennai",
+      "run_id": "chennai_flood_24h_001",
+      "field_map": {
+        "Label": "risk",
+        "DepthM": "depth_m",
+        "Probability": "probability",
+        "HorizonHours": "horizon_hr",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_planning_suitability",
+      "path": "data/processing/raw/chennai_planning_suitability.geojson",
+      "model_family": "planning_model",
+      "model_name": "your-org/urban-planning-model",
+      "run_id": "chennai_planning_001",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value"
+      }
+    }
+  ]
+}

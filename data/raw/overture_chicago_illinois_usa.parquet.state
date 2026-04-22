@@ -1,0 +1,12 @@
+{
+  "last_run": "2026-04-18T15:00:54.142095+00:00",
+  "release": "latest",
+  "type": "building",
+  "bbox": {
+    "xmin": -87.9400876,
+    "ymin": 41.644531,
+    "xmax": -87.5240812,
+    "ymax": 42.0230529
+  },
+  "output": "data/raw/overture_chicago_illinois_usa.parquet"
+}

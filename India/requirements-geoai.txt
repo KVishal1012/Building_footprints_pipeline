@@ -1,0 +1,16 @@
+# Optional future dependencies for processing_pipeline.py and separate
+# deep-learning preprocessing/inference.
+# These packages are not used by India/structure_pipeline.py.
+# Install them only when building later model-layer or agent workflows locally.
+transformers
+torch
+accelerate
+timm
+pillow
+segmentation-models-pytorch
+einops
+rasterio
+scikit-image
+opencv-python
+xarray
+netCDF4

@@ -1,0 +1,14 @@
+{
+  "last_release": "2026-03-18.0",
+  "last_run": "2026-04-11T12:56:11.957857+00:00",
+  "theme": "buildings",
+  "type": "building",
+  "bbox": {
+    "xmin": -95.9097419,
+    "ymin": 29.5370705,
+    "xmax": -95.0120525,
+    "ymax": 30.1103506
+  },
+  "backend": "geoparquet",
+  "output": "/Users/koushikannamalai/Downloads/Github/Structures/data/overture_buildings.parquet"
+}

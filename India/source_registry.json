@@ -1,0 +1,203 @@
+{
+  "strategy": {
+    "core_planning_layer": "NRSC/ISRO urban geospatial layers",
+    "base_map_anchor": "Survey of India base maps and district planning maps",
+    "operational_enrichment": "IUDX and municipal GIS datasets",
+    "statutory_priority": "Survey of India first, then local cadastral and land-record layers"
+  },
+  "task_choices": {
+    "master_planning_zoning_land_use_change": [
+      "NRSC/ISRO",
+      "Survey of India",
+      "local_master_plan_gis"
+    ],
+    "transport_utilities_service_delivery": [
+      "IUDX",
+      "municipal_operational_datasets",
+      "local_gis_layers"
+    ],
+    "statutory_legal_grade_base_mapping": [
+      "Survey of India",
+      "local_cadastral_layers",
+      "land_record_layers"
+    ],
+    "urban_growth_sprawl_environmental_suitability": [
+      "NRSC/ISRO",
+      "satellite_imagery",
+      "gis_overlays"
+    ]
+  },
+  "national_sources": {
+    "nrsc_isro_bhuvan": {
+      "authority": "NRSC/ISRO",
+      "role": "core planning layer",
+      "best_for": [
+        "urban growth",
+        "land use",
+        "sprawl",
+        "environmental suitability",
+        "flood and water-resource context"
+      ],
+      "links": [
+        "https://bhuvan.nrsc.gov.in",
+        "https://www.nrsc.gov.in/nrscnew/Services_Bhuvan_UrbanInfrastructure.php",
+        "https://www.nrsc.gov.in/EO_Urban_Portals?language_content_entity=en"
+      ],
+      "verified_source_note": "NRSC's Urban and Infrastructure Bhuvan Services page lists National Urban Information System, urban growth monitoring, master-plan formulation, heritage/monument services, census geospatial representation, and other urban/infrastructure thematic services.",
+      "verified_at": "2026-04-19",
+      "access_notes": "Public viewer and thematic portals; downloads or collaboration workflows may require Bhuvan registration or project-specific access."
+    },
+    "survey_of_india": {
+      "authority": "Survey of India",
+      "role": "statutory/base-map anchor",
+      "best_for": [
+        "legal-grade base mapping",
+        "district planning maps",
+        "topographic and administrative context"
+      ],
+      "links": [
+        "https://surveyofindia.gov.in",
+        "https://surveyofindia.gov.in/pages/open-series-maps",
+        "https://surveyofindia.gov.in/pages/district-planning-map-series"
+      ],
+      "verified_source_note": "Survey of India's District Planning Map Series page lists district map names with free-download links and sits under the Maps & Data navigation.",
+      "verified_at": "2026-04-19",
+      "access_notes": "Use for authoritative base mapping; some map products are free downloads while other datasets may require portal access or licensing."
+    },
+    "iudx": {
+      "authority": "India Urban Data Exchange",
+      "role": "urban operational data exchange",
+      "best_for": [
+        "transport",
+        "utilities",
+        "urban services",
+        "IoT and operational feeds"
+      ],
+      "links": [
+        "https://iudx.org.in",
+        "https://iudx.org.in/exchange",
+        "https://iudx.org.in/platform/"
+      ],
+      "verified_source_note": "IUDX's platform page describes a secure, controlled data-sharing platform for Indian cities, created through Smart Cities Mission and MoHUA work with IISc and operated by an IISc-based team.",
+      "verified_at": "2026-04-19",
+      "access_notes": "Discover datasets through the exchange/catalogue; access level varies by provider and may require registration, authorization, or provider approval."
+    }
+  },
+  "metro_sources": {
+    "chennai_tamil_nadu_india": {
+      "recommended_stack": [
+        "nrsc_isro_bhuvan",
+        "survey_of_india",
+        "iudx",
+        "greater_chennai_corporation_gis"
+      ],
+      "local_sources": {
+        "greater_chennai_corporation_gis": {
+          "authority": "Greater Chennai Corporation / Chennai Smart City",
+          "role": "municipal GIS and operational layer",
+          "links": [
+            "https://gis.chennai.gov.in",
+            "https://gis.chennaicorporation.gov.in/GCCApp/index.html",
+            "https://cscl.co.in/GIS-mapping"
+          ],
+          "source_categories": [
+            "ward_boundary",
+            "infrastructure",
+            "property_tax_gis",
+            "civic_services"
+          ],
+          "access_notes": "Public pages exist; detailed GIS application access may require account credentials."
+        }
+      }
+    },
+    "mumbai_maharashtra_india": {
+      "recommended_stack": [
+        "nrsc_isro_bhuvan",
+        "survey_of_india",
+        "iudx",
+        "mcgm_geoportal"
+      ],
+      "local_sources": {
+        "mcgm_geoportal": {
+          "authority": "Municipal Corporation of Greater Mumbai",
+          "role": "municipal GIS, development plan, property and zoning context",
+          "links": [
+            "https://portal.mcgm.gov.in"
+          ],
+          "source_categories": [
+            "development_plan",
+            "zoning",
+            "property",
+            "ward_boundary"
+          ],
+          "access_notes": "Verify current access and download terms before statutory use."
+        }
+      }
+    },
+    "bengaluru_karnataka_india": {
+      "recommended_stack": [
+        "nrsc_isro_bhuvan",
+        "survey_of_india",
+        "iudx",
+        "bbmp_geoportal"
+      ],
+      "local_sources": {
+        "bbmp_geoportal": {
+          "authority": "Bruhat Bengaluru Mahanagara Palike",
+          "role": "municipal GIS, wards, planning and local service layers",
+          "links": [
+            "https://bbmp.gov.in/geoportal"
+          ],
+          "source_categories": [
+            "ward_boundary",
+            "land_use",
+            "master_plan",
+            "civic_services"
+          ],
+          "access_notes": "Verify current portal availability and dataset licensing."
+        }
+      }
+    },
+    "hyderabad_telangana_india": {
+      "recommended_stack": [
+        "nrsc_isro_bhuvan",
+        "survey_of_india",
+        "iudx",
+        "hmda_gis"
+      ],
+      "local_sources": {
+        "hmda_gis": {
+          "authority": "Hyderabad Metropolitan Development Authority",
+          "role": "master plan, ORR zoning, metropolitan planning context",
+          "links": [
+            "https://www.hmda.gov.in/gis"
+          ],
+          "source_categories": [
+            "master_plan",
+            "zoning",
+            "metropolitan_boundary",
+            "growth_corridor"
+          ],
+          "access_notes": "Use for planning context; verify current authoritative download access before production use."
+        }
+      }
+    }
+  },
+  "implementation_mapping": {
+    "nrsc_isro_bhuvan": [
+      "future_satellite_context_layers",
+      "future_environmental_context_layers",
+      "future_hazard_context_layers"
+    ],
+    "survey_of_india": [
+      "future_statutory_base_layers"
+    ],
+    "iudx": [
+      "future_operational_context_layers"
+    ],
+    "municipal_gis": [
+      "parcel_sources",
+      "future_local_context_layers"
+    ]
+  }
+}
