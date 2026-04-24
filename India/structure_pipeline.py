@@ -29,6 +29,8 @@ from shapely.errors import GEOSException
 from shapely.geometry import MultiPolygon, box, shape
 
 
+MODULE_DIR = Path(__file__).resolve().parent
+
 MICROSOFT_DATASET_LINKS = (
     "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
 )
@@ -197,10 +199,10 @@ OUTPUT_COLUMNS = [
 
 @dataclass
 class PipelineConfig:
-    data_dir: Path = Path("data")
-    output_dir: Path = Path("data/output")
-    raw_dir: Path = Path("data/raw")
-    cache_dir: Path = Path("cache")
+    data_dir: Path = field(default_factory=lambda: MODULE_DIR / "data")
+    output_dir: Path = field(default_factory=lambda: MODULE_DIR / "data/output")
+    raw_dir: Path = field(default_factory=lambda: MODULE_DIR / "data/raw")
+    cache_dir: Path = field(default_factory=lambda: MODULE_DIR / "cache")
     country: str = "India"
     download_missing: bool = True
     use_overture: bool = True
@@ -406,11 +408,12 @@ def resolve_source_path(path_value: str | Path, config: PipelineConfig | None = 
     if path.is_absolute():
         return path
 
-    candidates = [path]
+    candidates = []
     if config is not None:
-        candidates.append(config.data_dir.parent / path)
         if len(path.parts) == 1:
             candidates.append(config.raw_dir / path)
+        candidates.append(config.data_dir.parent / path)
+    candidates.append(path)
 
     for candidate in candidates:
         if candidate.exists():

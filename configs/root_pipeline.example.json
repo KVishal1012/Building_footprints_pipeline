@@ -1,0 +1,25 @@
+{
+  "logging": {
+    "level": "INFO"
+  },
+  "places": [
+    {
+      "city": "Houston",
+      "state": "Texas"
+    }
+  ],
+  "config": {
+    "country": "USA",
+    "data_dir": "data",
+    "raw_dir": "data/raw",
+    "output_dir": "data/output",
+    "cache_dir": "cache",
+    "download_missing": true,
+    "use_overture": true,
+    "use_microsoft": true,
+    "use_osm": true,
+    "use_nsi": true,
+    "use_census": true,
+    "use_parcels": true
+  }
+}

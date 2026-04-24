@@ -3,17 +3,32 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass, field, fields
+import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+MODULE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = MODULE_DIR.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely import make_valid, wkt
+from shapely import wkt
 
+from pipeline_utils import (
+    clean_geometry as shared_clean_geometry,
+    estimated_projected_crs,
+    normalize_alias_name,
+    normalize_field_name,
+    resolve_source_path as shared_resolve_source_path,
+    slugify as shared_slugify,
+    source_failure as shared_source_failure,
+    write_metadata_sidecar as shared_write_metadata_sidecar,
+)
 
-MODULE_DIR = Path(__file__).resolve().parent
 
 PROCESSING_LAYER_TYPES = {
     "segmentation",
@@ -145,17 +160,11 @@ class ProcessingConfig:
 
 
 def slugify(*parts: str) -> str:
-    text = "_".join(str(part) for part in parts if part)
-    text = re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_").lower()
-    return text or "layer"
+    return shared_slugify(*parts, fallback="layer")
 
 
 def normalize_state_name(state: str | None) -> str | None:
-    if state is None:
-        return None
-    stripped = str(state).strip()
-    alias_key = re.sub(r"[^A-Za-z0-9]+", "", stripped).upper()
-    return STATE_ABBR_TO_NAME.get(alias_key, stripped)
+    return normalize_alias_name(state, STATE_ABBR_TO_NAME, collapse_alias_key=True)
 
 
 def normalize_layer_type(value: str) -> str:
@@ -166,10 +175,6 @@ def normalize_layer_type(value: str) -> str:
             f"Use one of {sorted(PROCESSING_LAYER_TYPES)}."
         )
     return layer_type
-
-
-def normalize_field_name(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", str(value).lower())
 
 
 def find_column(gdf: gpd.GeoDataFrame, source: dict, canonical_name: str) -> str | None:
@@ -196,16 +201,11 @@ def resolve_source_path(path_value: str | Path, config: ProcessingConfig) -> Pat
     if not path.is_absolute():
         candidates.extend([config.raw_dir / path, config.data_dir / path, Path.cwd() / path])
         candidates.append(MODULE_DIR / path)
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate.resolve()
-    return candidates[0].resolve()
+    return shared_resolve_source_path(path, candidates, fallback=candidates[0]).resolve()
 
 
 def source_failure(message: str, config: ProcessingConfig, exc: Exception | None = None) -> None:
-    if config.strict_sources:
-        raise RuntimeError(message) from exc
-    print(message)
+    shared_source_failure(message, strict=config.strict_sources, exc=exc)
 
 
 def empty_processing_layers(crs: str = "EPSG:4326") -> gpd.GeoDataFrame:
@@ -217,14 +217,7 @@ def empty_processing_links() -> pd.DataFrame:
 
 
 def clean_geometry(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    if gdf.empty:
-        return gdf
-    gdf = gdf[gdf.geometry.notna()].copy()
-    if gdf.empty:
-        return gdf
-    gdf.geometry = gdf.geometry.apply(make_valid)
-    gdf = gdf[~gdf.geometry.is_empty].copy()
-    return gdf
+    return shared_clean_geometry(gdf, validate_all=True)
 
 
 def read_table_source(path: Path, source: dict) -> gpd.GeoDataFrame:
@@ -361,12 +354,7 @@ def load_structures(config: ProcessingConfig) -> gpd.GeoDataFrame:
 
 
 def matching_crs(*gdfs: gpd.GeoDataFrame):
-    for gdf in gdfs:
-        if not gdf.empty:
-            crs = gdf.estimate_utm_crs()
-            if crs is not None:
-                return crs
-    return "EPSG:6933"
+    return estimated_projected_crs(*gdfs, fallback="EPSG:6933")
 
 
 def link_processing_layers_to_structures(
@@ -457,24 +445,13 @@ def link_processing_layers_to_structures(
     return links[PROCESSING_LINK_COLUMNS].reset_index(drop=True)
 
 
-def config_metadata(config: ProcessingConfig) -> dict:
-    metadata = {}
-    for field_info in fields(config):
-        value = getattr(config, field_info.name)
-        metadata[field_info.name] = str(value) if isinstance(value, Path) else value
-    return metadata
-
-
 def write_metadata_sidecar(path: Path, config: ProcessingConfig, metadata: dict) -> None:
-    if not config.write_run_metadata:
-        return
-    payload = {
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        **metadata,
-        "config": config_metadata(config),
-    }
-    path.with_suffix(path.suffix + ".metadata.json").write_text(
-        json.dumps(payload, indent=2) + "\n"
+    shared_write_metadata_sidecar(
+        path,
+        config,
+        metadata,
+        include_config=True,
+        trailing_newline=True,
     )
 
 

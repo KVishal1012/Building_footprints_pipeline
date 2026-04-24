@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+cache/
+data/raw/
+data/output/
+
+India/cache/
+India/data/raw/
+India/data/output/
+
+.env
+.DS_Store

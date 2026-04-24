@@ -2,6 +2,39 @@
 
 This log records user-requested changes and implemented changes for the India structure and urban-planning pipeline.
 
+## 2026-04-24
+
+### Request: Production-Style Execution Setup
+
+User requested:
+
+- Add clean config loading, logging, validation checks, and simple run commands for root and India pipelines.
+- Do not touch `.venv`, cache, or output folders.
+
+Implemented:
+
+- Added `pipeline_runtime.py` for JSON config loading, logging setup, runtime path validation, place parsing, and dataclass config validation.
+- Added script entrypoints for root structures, India structures, and India processing.
+- Added example JSON configs for root, India structure, and India processing runs.
+- Added a production runbook with direct commands and dry-run validation guidance.
+- Added runtime unit tests.
+
+## 2026-04-24
+
+### Request: Share Reusable Pipeline Utilities Without Changing Outputs
+
+User requested:
+
+- Refactor the root pipeline and India processing pipeline so duplicated logic lives in reusable utilities.
+- Do not change output behavior yet.
+
+Implemented:
+
+- Added root-level `pipeline_utils.py` for shared helper functions.
+- Reused shared helpers in `structure_pipeline.py` and `India/processing_pipeline.py` for slug generation, state/name normalization, field-name normalization, geometry cleaning, projected CRS selection, source failure handling, and metadata sidecar writing.
+- Preserved existing output paths, output schemas, source resolution order, and write behavior.
+- Verified with Python compile checks and the existing India unit test suite.
+
 ## 2026-04-19 11:46:57 EDT
 
 Initial retrospective log created. Earlier India-pipeline changes were completed before this log file existed, so this entry consolidates the requested work and implementation state as of this timestamp.

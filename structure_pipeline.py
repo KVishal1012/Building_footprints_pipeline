@@ -27,7 +27,16 @@ import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import requests
 from shapely.errors import GEOSException
-from shapely.geometry import MultiPolygon, box, shape
+from shapely.geometry import box, shape
+
+from pipeline_utils import (
+    clean_geometry as shared_clean_geometry,
+    estimated_projected_crs as shared_estimated_projected_crs,
+    json_safe,
+    normalize_alias_name,
+    normalize_field_name,
+    slugify,
+)
 
 
 MICROSOFT_DATASET_LINKS = (
@@ -248,16 +257,29 @@ class PipelineConfig:
         self.generic_microsoft_cache_slugs = set(self.generic_microsoft_cache_slugs)
         self.boundary_sources = dict(self.boundary_sources)
         self.parcel_sources = dict(self.parcel_sources)
+        self.validate()
+
+    def validate(self) -> None:
+        if not str(self.country).strip():
+            raise ValueError("country must not be empty")
+        if self.request_timeout_sec <= 0:
+            raise ValueError("request_timeout_sec must be positive")
+        if self.nsi_tile_size_deg <= 0:
+            raise ValueError("nsi_tile_size_deg must be positive")
+        if not 0 < int(self.microsoft_zoom) <= 23:
+            raise ValueError("microsoft_zoom must be between 1 and 23")
+        for name in (
+            "microsoft_overlap_ratio_threshold",
+            "osm_overlap_ratio_threshold",
+            "parcel_overlap_ratio_threshold",
+        ):
+            value = getattr(self, name)
+            if not 0 <= value <= 1:
+                raise ValueError(f"{name} must be between 0 and 1")
 
     def ensure_dirs(self) -> None:
         for path in (self.data_dir, self.output_dir, self.raw_dir, self.cache_dir):
             path.mkdir(parents=True, exist_ok=True)
-
-
-def slugify(*parts: str) -> str:
-    text = "_".join(str(part) for part in parts if part)
-    text = re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_").lower()
-    return text or "place"
 
 
 def source_for_city(
@@ -278,28 +300,14 @@ def source_for_city(
     return dict(source)
 
 
-def json_safe(value):
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): json_safe(value[key]) for key in sorted(value)}
-    if isinstance(value, (list, tuple)):
-        return [json_safe(item) for item in value]
-    if isinstance(value, set):
-        return sorted(json_safe(item) for item in value)
-    return value
-
-
 def stable_hash(value, length: int = 12) -> str:
     payload = json.dumps(json_safe(value), sort_keys=True, separators=(",", ":"))
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:length]
 
 
 def normalize_state_name(state: str) -> str:
-    stripped = state.strip()
-    if len(stripped) == 2 and stripped.upper() in STATE_ABBR_TO_NAME:
-        return STATE_ABBR_TO_NAME[stripped.upper()]
-    return stripped
+    normalized = normalize_alias_name(state, STATE_ABBR_TO_NAME)
+    return normalized if normalized is not None else ""
 
 
 def to_numeric_safe(series: pd.Series | None, index=None) -> pd.Series:
@@ -339,56 +347,8 @@ def empty_gdf(columns: Iterable[str] = (), crs: str = "EPSG:4326") -> gpd.GeoDat
     return gpd.GeoDataFrame({column: [] for column in columns}, geometry=[], crs=crs)
 
 
-def polygonal_part(geometry):
-    if geometry is None or geometry.is_empty:
-        return None
-    if geometry.geom_type == "Polygon":
-        return geometry
-    if geometry.geom_type == "MultiPolygon":
-        return geometry
-    if geometry.geom_type != "GeometryCollection":
-        return None
-
-    polygons = []
-    for part in geometry.geoms:
-        polygonal = polygonal_part(part)
-        if polygonal is None:
-            continue
-        if polygonal.geom_type == "Polygon":
-            polygons.append(polygonal)
-        else:
-            polygons.extend(polygonal.geoms)
-
-    if not polygons:
-        return None
-    if len(polygons) == 1:
-        return polygons[0]
-    return MultiPolygon(polygons)
-
-
 def clean_geom(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    if gdf.empty:
-        return gdf
-    polygon_types = {"Polygon", "MultiPolygon"}
-    geometry_column = gdf.geometry.name
-    cleaned = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
-    if cleaned.empty:
-        return cleaned
-
-    invalid = ~cleaned.geometry.is_valid
-    if invalid.any():
-        cleaned.loc[invalid, geometry_column] = cleaned.loc[
-            invalid, geometry_column
-        ].make_valid()
-
-    cleaned[geometry_column] = cleaned.geometry.apply(polygonal_part)
-    cleaned = cleaned[
-        cleaned.geometry.notna()
-        & ~cleaned.geometry.is_empty
-        & cleaned.geometry.is_valid
-        & cleaned.geometry.geom_type.isin(polygon_types)
-    ].copy()
-    return cleaned
+    return shared_clean_geometry(gdf, polygonal_only=True)
 
 
 def set_geometry_precision(
@@ -1239,12 +1199,7 @@ def add_area(base: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def estimated_projected_crs(*gdfs: gpd.GeoDataFrame):
-    for gdf in gdfs:
-        if gdf is not None and not gdf.empty:
-            crs = gdf.estimate_utm_crs()
-            if crs is not None:
-                return crs
-    return "EPSG:5070"
+    return shared_estimated_projected_crs(*gdfs, fallback="EPSG:5070")
 
 
 def best_polygon_overlap(
@@ -1309,10 +1264,6 @@ def best_polygon_overlap(
     attributes["_OverlapArea_m2"] = best["_OverlapArea_m2"].to_numpy()
     attributes["_OverlapRatio"] = best["_OverlapRatio"].to_numpy()
     return attributes.set_index(base_id)
-
-
-def normalize_field_name(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", str(value).lower())
 
 
 def parcel_source_for_city(

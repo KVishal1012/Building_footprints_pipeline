@@ -81,6 +81,15 @@ python India/processing_pipeline.py \
   --structure-path India/data/output/structures_master.parquet
 ```
 
+Production-style wrapper commands from the repo root:
+
+```bash
+.venv/bin/python scripts/run_india_pipeline.py --config India/pipeline_config.example.json
+.venv/bin/python scripts/run_india_processing.py --config India/processing_pipeline_config.example.json
+```
+
+Add `--dry-run` to validate config, logging, paths, and dataclass fields without running the pipeline.
+
 ## Strict Mode
 
 Default notebook behavior is permissive: optional missing layers are skipped with a message. For production runs, enable strict mode when configured sources are expected to exist:

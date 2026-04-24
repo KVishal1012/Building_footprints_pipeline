@@ -10,6 +10,7 @@ from shapely.geometry import box
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from structure_pipeline import (  # noqa: E402
+    MODULE_DIR,
     OUTPUT_COLUMNS,
     PipelineConfig,
     empty_gdf,
@@ -40,6 +41,10 @@ class PipelineContractTests(unittest.TestCase):
         config = PipelineConfig()
 
         self.assertEqual(config.country, "India")
+        self.assertEqual(config.data_dir, MODULE_DIR / "data")
+        self.assertEqual(config.output_dir, MODULE_DIR / "data/output")
+        self.assertEqual(config.raw_dir, MODULE_DIR / "data/raw")
+        self.assertEqual(config.cache_dir, MODULE_DIR / "cache")
         self.assertFalse(config.use_nsi)
         self.assertFalse(config.use_census)
         self.assertTrue(config.use_parcels)

@@ -1,0 +1,28 @@
+{
+  "logging": {
+    "level": "INFO"
+  },
+  "places": [
+    {
+      "city": "Chennai",
+      "state": "Tamil Nadu"
+    }
+  ],
+  "config": {
+    "country": "India",
+    "data_dir": "India/data",
+    "raw_dir": "India/data/raw",
+    "output_dir": "India/data/output",
+    "cache_dir": "India/cache",
+    "download_missing": true,
+    "use_overture": true,
+    "use_microsoft": true,
+    "use_osm": true,
+    "use_nsi": false,
+    "use_census": false,
+    "use_parcels": true,
+    "strict_sources": false,
+    "fail_on_empty_output": false,
+    "write_run_metadata": true
+  }
+}
