@@ -323,6 +323,8 @@ def standardize_processing_layer(
 
     for numeric_column in ("Score", "HorizonHours", "DepthM", "Probability"):
         out[numeric_column] = pd.to_numeric(out[numeric_column], errors="coerce")
+    for text_column in ("Label", "Value", "Scenario"):
+        out[text_column] = out[text_column].astype("string")
 
     return out[PROCESSING_LAYER_COLUMNS].reset_index(drop=True)
 
@@ -380,69 +382,78 @@ def link_processing_layers_to_structures(
     structures_projected = structures[["StructureID", "geometry"]].to_crs(projected_crs)
     layers_projected = layers.reset_index(drop=True).to_crs(projected_crs)
 
-    point_layers = layers_projected.geom_type.isin(["Point", "MultiPoint"]).all()
+    point_mask = layers_projected.geom_type.isin(["Point", "MultiPoint"])
     layer_attrs = layers.drop(columns="geometry").reset_index(drop=True)
+    link_frames = []
 
-    if point_layers:
+    if point_mask.any():
         joined = gpd.sjoin(
-            layers_projected[["geometry"]],
+            layers_projected.loc[point_mask, ["geometry"]],
             structures_projected,
             how="inner",
             predicate="within",
         )
-        if joined.empty:
-            return empty_processing_links()
-        links = pd.concat(
-            [
-                joined[["StructureID"]].reset_index(drop=True),
-                layer_attrs.iloc[joined.index.to_numpy()].reset_index(drop=True),
-            ],
-            axis=1,
+        if not joined.empty:
+            point_links = pd.concat(
+                [
+                    joined[["StructureID"]].reset_index(drop=True),
+                    layer_attrs.iloc[joined.index.to_numpy()].reset_index(drop=True),
+                ],
+                axis=1,
+            )
+            point_links["MatchMethod"] = "point_within_structure"
+            point_links["MatchArea_m2"] = np.nan
+            point_links["StructureCoverage"] = np.nan
+            point_links["LayerCoverage"] = np.nan
+            link_frames.append(point_links[PROCESSING_LINK_COLUMNS])
+
+    area_layers = layers_projected.loc[~point_mask]
+    if not area_layers.empty:
+        joined = gpd.sjoin(
+            structures_projected[["StructureID", "geometry"]],
+            area_layers[["LayerID", "geometry"]],
+            how="inner",
+            predicate="intersects",
         )
-        links["MatchMethod"] = "point_within_structure"
-        links["MatchArea_m2"] = np.nan
-        links["StructureCoverage"] = np.nan
-        links["LayerCoverage"] = np.nan
-        return links[PROCESSING_LINK_COLUMNS].reset_index(drop=True)
+        if not joined.empty:
+            joined = joined.reset_index().rename(columns={"index": "structure_index"})
+            structure_geoms = structures_projected.geometry.loc[
+                joined["structure_index"].to_numpy()
+            ].reset_index(drop=True)
+            layer_geoms = area_layers.geometry.loc[
+                joined["index_right"].to_numpy()
+            ].reset_index(drop=True)
+            intersections = structure_geoms.intersection(layer_geoms)
+            match_area = intersections.area
+            structure_area = structure_geoms.area.replace(0, np.nan)
+            layer_area = layer_geoms.area.replace(0, np.nan)
 
-    joined = gpd.sjoin(
-        structures_projected[["StructureID", "geometry"]],
-        layers_projected[["LayerID", "geometry"]],
-        how="inner",
-        predicate="intersects",
-    )
-    if joined.empty:
+            keep = match_area >= config.min_intersection_area_m2
+            if keep.any():
+                keep_values = keep.to_numpy()
+                area_links = pd.concat(
+                    [
+                        joined.loc[keep_values, ["StructureID"]].reset_index(drop=True),
+                        layer_attrs.iloc[
+                            joined.loc[keep_values, "index_right"].to_numpy()
+                        ].reset_index(drop=True),
+                    ],
+                    axis=1,
+                )
+                area_links["MatchMethod"] = "area_intersection"
+                area_links["MatchArea_m2"] = match_area.loc[keep].to_numpy()
+                area_links["StructureCoverage"] = (
+                    match_area.loc[keep].to_numpy()
+                    / structure_area.loc[keep].to_numpy()
+                )
+                area_links["LayerCoverage"] = (
+                    match_area.loc[keep].to_numpy() / layer_area.loc[keep].to_numpy()
+                )
+                link_frames.append(area_links[PROCESSING_LINK_COLUMNS])
+
+    if not link_frames:
         return empty_processing_links()
-
-    joined = joined.reset_index().rename(columns={"index": "structure_index"})
-    structure_geoms = structures_projected.geometry.loc[
-        joined["structure_index"].to_numpy()
-    ].reset_index(drop=True)
-    layer_geoms = layers_projected.geometry.iloc[joined["index_right"].to_numpy()].reset_index(drop=True)
-    intersections = structure_geoms.intersection(layer_geoms)
-    match_area = intersections.area
-    structure_area = structure_geoms.area.replace(0, np.nan)
-    layer_area = layer_geoms.area.replace(0, np.nan)
-
-    keep = match_area >= config.min_intersection_area_m2
-    if not keep.any():
-        return empty_processing_links()
-    keep_values = keep.to_numpy()
-
-    links = pd.concat(
-        [
-            joined.loc[keep_values, ["StructureID"]].reset_index(drop=True),
-            layer_attrs.iloc[joined.loc[keep_values, "index_right"].to_numpy()].reset_index(drop=True),
-        ],
-        axis=1,
-    )
-    links["MatchMethod"] = "area_intersection"
-    links["MatchArea_m2"] = match_area.loc[keep].to_numpy()
-    links["StructureCoverage"] = (
-        match_area.loc[keep].to_numpy() / structure_area.loc[keep].to_numpy()
-    )
-    links["LayerCoverage"] = match_area.loc[keep].to_numpy() / layer_area.loc[keep].to_numpy()
-    return links[PROCESSING_LINK_COLUMNS].reset_index(drop=True)
+    return pd.concat(link_frames, ignore_index=True)[PROCESSING_LINK_COLUMNS]
 
 
 def write_metadata_sidecar(path: Path, config: ProcessingConfig, metadata: dict) -> None:

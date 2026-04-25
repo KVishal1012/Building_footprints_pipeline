@@ -30,6 +30,23 @@ Implemented changes:
   - Includes transit, waterbody, wetland, flood hazard, heat, and growth-suitability layers.
 - Updated `India/modeling_plan.md` with the new sequenced run command and scenario source template path.
 
+### Request: Populate Real Scenario Data
+
+User asked to populate real scenario data and run scenario linking.
+
+Implemented changes:
+
+- Added `India/populate_real_scenario_layers.py` to generate Chennai scenario inputs using:
+  - OSM transit stations/stops
+  - OSM waterbody context
+  - OSM wetland context
+  - Derived flood, heat, and growth suitability scenario layers linked to structure context
+- Updated `India/processing_pipeline.py` to normalize `Label`, `Value`, and `Scenario` as string fields before parquet write.
+- Generated scenario raw files under `India/data/processing/raw/scenarios/`.
+- Ran scenario processing successfully:
+  - `processing_layers.parquet`: 7,722 rows
+  - `structure_processing_links.parquet`: 1,852 rows
+
 ## 2026-04-24
 
 ### Request: Add Streamlit Urban-Growth Review Dashboard
