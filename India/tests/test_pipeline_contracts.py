@@ -16,6 +16,7 @@ from structure_pipeline import (  # noqa: E402
     empty_gdf,
     finalize_attributes,
     load_city_parcels,
+    merge_osm_footprints,
     normalize_state_name,
     validate_output_gdf,
 )
@@ -157,6 +158,49 @@ class PipelineContractTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             validate_output_gdf(gdf, "test", PipelineConfig())
+
+    def test_merge_osm_footprints_uses_osm_when_base_is_empty(self):
+        base = empty_gdf(crs="EPSG:4326")
+        osm = gpd.GeoDataFrame(
+            {
+                "StructureID": ["osm_1"],
+                "FootprintSource": ["osm"],
+                "OSMID": ["1"],
+            },
+            geometry=[box(80.20, 13.00, 80.201, 13.001)],
+            crs="EPSG:4326",
+        )
+
+        merged = merge_osm_footprints(base, osm, PipelineConfig())
+
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged.loc[0, "StructureID"], "osm_1")
+        self.assertEqual(merged.loc[0, "FootprintSource"], "osm")
+
+    def test_merge_osm_footprints_adds_unmatched_when_enabled(self):
+        base = gpd.GeoDataFrame(
+            {"StructureID": ["ovt_1"], "FootprintSource": ["overture"]},
+            geometry=[box(80.20, 13.00, 80.201, 13.001)],
+            crs="EPSG:4326",
+        )
+        osm = gpd.GeoDataFrame(
+            {
+                "StructureID": ["osm_overlap", "osm_unmatched"],
+                "FootprintSource": ["osm", "osm"],
+                "OSMID": ["10", "20"],
+            },
+            geometry=[
+                box(80.2002, 13.0002, 80.2008, 13.0008),
+                box(80.21, 13.01, 80.211, 13.011),
+            ],
+            crs="EPSG:4326",
+        )
+
+        merged = merge_osm_footprints(base, osm, PipelineConfig(add_osm_unmatched=True))
+
+        self.assertEqual(len(merged), 2)
+        self.assertIn("osm_unmatched", set(merged["StructureID"]))
+        self.assertNotIn("osm_overlap", set(merged["StructureID"]))
 
 
 if __name__ == "__main__":

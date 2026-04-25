@@ -2,6 +2,81 @@
 
 This log records user-requested changes and implemented changes for the India structure and urban-planning pipeline.
 
+### Request: Start With OSM, Then Other Sources, Then Scenario Data
+
+User asked to run the data onboarding sequence in this order:
+
+1. OSM first
+2. Other structure data sources
+3. Scenario-related data
+
+Implemented changes:
+
+- Updated `India/structure_pipeline.py` so OSM can act as a primary footprint source.
+  - OSM rows now include stable `StructureID`, `FootprintSource`, and baseline footprint provenance fields.
+  - Added `merge_osm_footprints(...)` to append unmatched OSM footprints into the base footprint table.
+  - Added `add_osm_unmatched` to `PipelineConfig` (default `true`).
+  - Added source-count metadata fields for footprint counts before and after OSM merge.
+- Added tests in `India/tests/test_pipeline_contracts.py` for:
+  - OSM fallback when base footprints are empty.
+  - OSM unmatched-footprint merge behavior.
+- Added sequenced runner:
+  - `scripts/run_india_realworld_sequence.py`
+  - Runs OSM-first structures, then full-source structures, then scenario processing.
+- Added sequence config template:
+  - `India/realworld_sequence_config.example.json`
+- Added scenario data source template for real-world layers:
+  - `India/scenario_sources.example.json`
+  - Includes transit, waterbody, wetland, flood hazard, heat, and growth-suitability layers.
+- Updated `India/modeling_plan.md` with the new sequenced run command and scenario source template path.
+
+## 2026-04-24
+
+### Request: Add Streamlit Urban-Growth Review Dashboard
+
+User requested:
+
+- Implement a Streamlit dashboard to review generated urban-growth planning outputs.
+
+Implemented:
+
+- Added `India/urban_growth_dashboard.py` for local review of urban-growth processing layers and structure links.
+- Added dashboard dependency to `requirements.txt`.
+- Updated `modeling_plan.md` with the Streamlit run command.
+
+## 2026-04-24
+
+### Request: Add Priority Urban-Growth Proxy Layers
+
+User requested:
+
+- Start adding urban-growth planning layers for the priority scenarios.
+- Use proxy layers first, not authoritative satellite/GIS overlays yet.
+
+Implemented:
+
+- Added `India/urban_growth_layers.py` to generate seven Chennai urban-growth proxy GeoJSON layers from the existing structure table.
+- Added dedicated source and run configs for urban-growth processing.
+- Added unit tests for scenario generation, required columns, score bounds, empty-input failure, and GeoJSON writing.
+- Updated `modeling_plan.md` with the proxy-layer warning, commands, and replacement path for authoritative future data.
+
+## 2026-04-24
+
+### Request: Execute India Production UAT
+
+User requested:
+
+- Implement the India pipeline UAT checklist.
+- Start production-level testing with the India pipeline.
+
+Implemented:
+
+- Ran environment, config, structure, processing, negative, and regression UAT checks.
+- Added `India/UAT_CHECKLIST.md` with pass/fail evidence and acceptance status.
+- Fixed mixed-geometry processing linkage so point layers and polygon layers both link when present in the same processing batch.
+- Added a regression test for mixed point/polygon processing layers.
+- Added `.gitignore` coverage for generated India processing raw/output artifacts.
+
 ## 2026-04-24
 
 ### Request: Production-Style Execution Setup

@@ -1,0 +1,37 @@
+{
+  "logging": {
+    "level": "INFO"
+  },
+  "places": [
+    {
+      "city": "Chennai",
+      "state": "Tamil Nadu"
+    }
+  ],
+  "structure_config": {
+    "country": "India",
+    "data_dir": "India/data",
+    "raw_dir": "India/data/raw",
+    "output_dir": "India/data/output",
+    "cache_dir": "India/cache",
+    "write_run_metadata": true,
+    "fail_on_empty_output": false
+  },
+  "osm_first_overrides": {
+    "use_parcels": false
+  },
+  "full_source_overrides": {
+    "use_parcels": true
+  },
+  "scenario_source_config": "India/scenario_sources.example.json",
+  "processing_config": {
+    "data_dir": "India/data",
+    "structure_path": "India/data/output/structures_master.parquet",
+    "output_dir": "India/data/processing/output",
+    "raw_dir": "India/data/processing/raw",
+    "country": "India",
+    "strict_sources": false,
+    "write_run_metadata": true,
+    "min_intersection_area_m2": 1.0
+  }
+}

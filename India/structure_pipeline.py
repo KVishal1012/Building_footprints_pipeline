@@ -212,6 +212,7 @@ class PipelineConfig:
     use_census: bool = False
     use_parcels: bool = True
     add_microsoft_unmatched: bool = True
+    add_osm_unmatched: bool = True
     overture_release: str | None = None
     nsi_tile_size_deg: float = 0.08
     request_timeout_sec: int = 90
@@ -909,8 +910,23 @@ def get_osm_buildings(
         if column in raw.columns:
             units = units.combine_first(to_numeric_safe(raw[column], index=raw.index))
 
+    structure_ids = ("osm_" + osmid.astype(str)).astype("string")
+    duplicate_mask = structure_ids.duplicated(keep=False)
+    if duplicate_mask.any():
+        duplicate_order = structure_ids.groupby(structure_ids).cumcount()
+        structure_ids = structure_ids.where(
+            ~duplicate_mask,
+            structure_ids + "_" + duplicate_order.astype(str),
+        )
+
     out = gpd.GeoDataFrame(
         {
+            "StructureID": structure_ids,
+            "FootprintSource": "osm",
+            "OvertureID": pd.Series(pd.NA, index=raw.index, dtype="string"),
+            "MicrosoftID": pd.Series(pd.NA, index=raw.index, dtype="string"),
+            "Confidence_MS": pd.Series(np.nan, index=raw.index),
+            "HasParts": pd.Series(False, index=raw.index),
             "OSMID": osmid.astype("string"),
             "OSM_StructureType": raw.get(
                 "building", pd.Series(pd.NA, index=raw.index)
@@ -924,6 +940,39 @@ def get_osm_buildings(
         crs=raw.crs,
     )
     return out.to_crs(epsg=4326).reset_index(drop=True)
+
+
+def merge_osm_footprints(
+    base: gpd.GeoDataFrame,
+    osm: gpd.GeoDataFrame,
+    config: PipelineConfig,
+) -> gpd.GeoDataFrame:
+    if osm.empty:
+        return base
+    if base.empty:
+        return osm.reset_index(drop=True)
+    if not config.add_osm_unmatched:
+        return base
+
+    points = osm[["StructureID", "geometry"]].copy()
+    points["geometry"] = points.geometry.representative_point()
+    matched = gpd.sjoin(
+        points,
+        base[["StructureID", "geometry"]].rename(columns={"StructureID": "BaseStructureID"}),
+        how="left",
+        predicate="within",
+    )
+    unmatched_ids = matched.loc[matched["BaseStructureID"].isna(), "StructureID"].unique()
+    if len(unmatched_ids) == 0:
+        return base
+
+    osm_extra = osm[osm["StructureID"].isin(unmatched_ids)]
+    merged = gpd.GeoDataFrame(
+        pd.concat([base, osm_extra], ignore_index=True),
+        geometry="geometry",
+        crs=base.crs,
+    )
+    return merged.reset_index(drop=True)
 
 
 def attach_osm_attributes(
@@ -1652,10 +1701,14 @@ def build_city_structures(
     microsoft = load_microsoft_buildings(city_slug, boundary, config)
     print(f"Microsoft polygons: {len(microsoft):,}")
     base = merge_footprints(overture, microsoft, config)
-    print(f"Merged footprint polygons: {len(base):,}")
+    footprints_after_overture_microsoft = len(base)
+    print(f"Merged footprint polygons (Overture + Microsoft): {footprints_after_overture_microsoft:,}")
 
     osm = get_osm_buildings(boundary, config)
     print(f"OSM building polygons: {len(osm):,}")
+    base = merge_osm_footprints(base, osm, config)
+    footprints_after_osm_merge = len(base)
+    print(f"Merged footprint polygons (after OSM): {footprints_after_osm_merge:,}")
     base = attach_osm_attributes(base, osm)
 
     nsi = get_nsi_structures(boundary, config)
@@ -1698,7 +1751,8 @@ def build_city_structures(
             "source_counts": {
                 "overture_polygons": len(overture),
                 "microsoft_polygons": len(microsoft),
-                "merged_footprints": len(base),
+                "merged_footprints_overture_microsoft": footprints_after_overture_microsoft,
+                "merged_footprints_after_osm": footprints_after_osm_merge,
                 "osm_building_polygons": len(osm),
                 "nsi_structure_points": len(nsi),
                 "parcel_polygons": len(parcels),

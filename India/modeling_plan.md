@@ -64,6 +64,40 @@ Expected output columns:
 
 Keep planning recommendations in processing layers or separate agent-owned outputs with clear provenance, assumptions, and date stamps.
 
+### 5. Urban Growth Proxy Layers
+
+The first Chennai urban-growth planning pass uses proxy layers generated from the existing structure geometry only. These layers are not statutory or authoritative. They are placeholders for workflow testing, scenario review, and early dashboard wiring until NRSC/Bhuvan, TNGIS, GCC/CMDA, DEM/flood, transit, waterbody, wetland, and heat datasets are added.
+
+Priority proxy scenarios:
+
+- Transit-oriented infill growth
+- Blue-green network protection
+- Peripheral sprawl along highways
+- Wetland-edge encroachment
+- Floodplain lock-in
+- Heat-island intensification corridor
+- Compound-risk growth hotspots
+
+Generate these raw proxy layers with:
+
+```bash
+.venv/bin/python India/urban_growth_layers.py
+```
+
+Normalize and link them to structures with:
+
+```bash
+.venv/bin/python scripts/run_india_processing.py --config India/urban_growth_processing_config.example.json
+```
+
+Review the outputs in Streamlit with:
+
+```bash
+.venv/bin/streamlit run India/urban_growth_dashboard.py
+```
+
+Generated proxy GeoJSON files belong under `India/data/processing/raw/urban_growth/` and should not be committed.
+
 ## Practical Order For Chennai
 
 1. Build the base structure layer with Overture, Microsoft, and OSM.
@@ -74,3 +108,21 @@ Keep planning recommendations in processing layers or separate agent-owned outpu
 6. Build separate flood polygons or grid cells for scenario analysis.
 7. Build separate planning suitability layers that combine hazard, growth, transit, land use, and parcel/context data.
 8. Use `StructureID` as the join key for downstream dashboards, maps, and scenario analysis.
+
+## Sequenced Real-World Run
+
+Use the sequence runner to execute:
+
+1. OSM-first structures
+2. Full-source structures (Overture + Microsoft + OSM + parcels where configured)
+3. Scenario-layer normalization and structure linking
+
+```bash
+.venv/bin/python scripts/run_india_realworld_sequence.py --config India/realworld_sequence_config.example.json
+```
+
+Scenario source specs for real datasets are templated in:
+
+```text
+India/scenario_sources.example.json
+```
