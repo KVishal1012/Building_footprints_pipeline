@@ -47,6 +47,29 @@ Implemented changes:
   - `processing_layers.parquet`: 7,722 rows
   - `structure_processing_links.parquet`: 1,852 rows
 
+### Request: Productionize 5-Item Scenario Roadmap
+
+Implemented in one pass:
+
+- Scenario completeness:
+  - `India/populate_real_scenario_layers.py` now writes `scenario` for all six scenario sources.
+  - Scenario IDs are stable and city-derived (for example `chennai_tamil_nadu_india_*_realworld_v1`).
+  - Scenario raw filenames are city-derived (not hardcoded Chennai names).
+- Dashboard semantics and navigation:
+  - `India/urban_growth_dashboard.py` updated wording to real OSM + derived indicators.
+  - Added display modes by `Scenario`, `LayerType`, and `SourceName`.
+  - Updated map/sample/summary/table filtering to use selected display mode.
+- Balanced data-quality gates in processing:
+  - Added enforced checks for missing CRS, geometry empty-after-cleanup, and missing required `field_map` columns.
+  - Added Scenario null-rate gate with configurable threshold (`max_null_scenario_rate`, default `0.05`).
+- Metrics/reporting:
+  - Added processing metrics JSON output (`processing_metrics.json`) including source/layer/scenario counts, links, unique linked structures, link rate, and scenario coverage.
+  - Added CLI report mode: `--report-metrics-only`.
+- Multi-city rollout templates:
+  - Added Bengaluru source template: `India/scenario_sources_bengaluru.example.json`.
+  - Added Bengaluru sequence config: `India/realworld_sequence_bengaluru_config.example.json`.
+  - Updated Chennai templates with full `Scenario` mapping and quality-gate config.
+
 ## 2026-04-24
 
 ### Request: Add Streamlit Urban-Growth Review Dashboard

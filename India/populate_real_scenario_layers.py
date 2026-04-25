@@ -15,6 +15,16 @@ MODULE_DIR = Path(__file__).resolve().parent
 LOGGER = logging.getLogger("populate_real_scenario_layers")
 
 
+SCENARIO_SUFFIXES = {
+    "transit": "transit_oriented_growth_realworld_v1",
+    "water": "blue_green_network_protection_realworld_v1",
+    "wetlands": "wetland_edge_encroachment_realworld_v1",
+    "flood": "floodplain_lock_in_realworld_v1",
+    "heat": "heat_island_intensification_corridor_realworld_v1",
+    "growth": "compound_risk_growth_hotspots_realworld_v1",
+}
+
+
 def setup_logging(level: str) -> None:
     numeric_level = getattr(logging, str(level).upper(), None)
     if not isinstance(numeric_level, int):
@@ -27,6 +37,29 @@ def setup_logging(level: str) -> None:
 
 def slugify(*parts: str) -> str:
     return "_".join(str(part).strip().lower().replace(" ", "_") for part in parts if part)
+
+
+def city_slug(city: str, state: str, country: str) -> str:
+    return slugify(city, state, country)
+
+
+def scenario_id(city_slug_value: str, key: str) -> str:
+    return f"{city_slug_value}_{SCENARIO_SUFFIXES[key]}"
+
+
+def apply_context_scenarios(
+    transit: gpd.GeoDataFrame,
+    water: gpd.GeoDataFrame,
+    wetlands: gpd.GeoDataFrame,
+    city_slug_value: str,
+) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    transit = transit.copy()
+    water = water.copy()
+    wetlands = wetlands.copy()
+    transit["scenario"] = scenario_id(city_slug_value, "transit")
+    water["scenario"] = scenario_id(city_slug_value, "water")
+    wetlands["scenario"] = scenario_id(city_slug_value, "wetlands")
+    return transit, water, wetlands
 
 
 def normalize(series: pd.Series) -> pd.Series:
@@ -224,6 +257,7 @@ def build_derived_scenario_layers(
     structures_path: Path,
     city: str,
     state: str,
+    city_slug_value: str,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
     if not structures_path.exists():
         raise FileNotFoundError(f"Structures file not found: {structures_path}")
@@ -282,7 +316,7 @@ def build_derived_scenario_layers(
     ).to_crs(epsg=4326)
 
     flood_layer = point_grid[["geometry"]].copy()
-    flood_layer["scenario"] = "chennai_floodplain_lock_in_realworld_v1"
+    flood_layer["scenario"] = scenario_id(city_slug_value, "flood")
     flood_layer["probability"] = flood_prob.round(4)
     flood_layer["depth_m"] = (0.25 + 2.75 * flood_layer["probability"]).round(2)
     flood_layer["risk_class"] = pd.cut(
@@ -294,6 +328,7 @@ def build_derived_scenario_layers(
     heat_layer = point_grid[["geometry"]].copy()
     heat_layer["score"] = heat_score.round(4)
     heat_layer["index_value"] = (100 * heat_layer["score"]).round(1)
+    heat_layer["scenario"] = scenario_id(city_slug_value, "heat")
     heat_layer["heat_class"] = pd.cut(
         heat_layer["score"],
         bins=[-0.001, 0.33, 0.66, 1.0],
@@ -301,7 +336,7 @@ def build_derived_scenario_layers(
     ).astype("string")
 
     growth_layer = point_grid[["geometry"]].copy()
-    growth_layer["scenario"] = "chennai_compound_risk_growth_hotspots_realworld_v1"
+    growth_layer["scenario"] = scenario_id(city_slug_value, "growth")
     growth_layer["suitability_score"] = suitability.round(4)
     growth_layer["planning_value"] = (
         "Transit-access weighted suitability penalized by flood and heat risk"
@@ -337,7 +372,7 @@ def write_layer(gdf: gpd.GeoDataFrame, path: Path, name: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Populate real-world Chennai scenario layers from OSM and structure context."
+        description="Populate real-world city scenario layers from OSM and structure context."
     )
     parser.add_argument("--city", default="Chennai")
     parser.add_argument("--state", default="Tamil Nadu")
@@ -358,10 +393,14 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging(args.log_level)
+    city_slug_value = city_slug(args.city, args.state, args.country)
     boundary = get_city_boundary(args.city, args.state, args.country)
     transit = make_transit_layer(boundary)
     water = make_water_layer(boundary)
     wetlands = make_wetland_layer(boundary)
+    transit, water, wetlands = apply_context_scenarios(
+        transit, water, wetlands, city_slug_value
+    )
     flood, heat, growth = build_derived_scenario_layers(
         boundary=boundary,
         transit=transit,
@@ -370,37 +409,38 @@ def main() -> None:
         structures_path=args.structures,
         city=args.city,
         state=args.state,
+        city_slug_value=city_slug_value,
     )
 
     write_layer(
         transit,
-        args.output_dir / "chennai_transit_stations.geojson",
-        "chennai_transit_stations",
+        args.output_dir / f"{city_slug_value}_transit_stations.geojson",
+        f"{city_slug_value}_transit_stations",
     )
     write_layer(
         water,
-        args.output_dir / "chennai_waterbodies.geojson",
-        "chennai_waterbodies",
+        args.output_dir / f"{city_slug_value}_waterbodies.geojson",
+        f"{city_slug_value}_waterbodies",
     )
     write_layer(
         wetlands,
-        args.output_dir / "chennai_wetlands.geojson",
-        "chennai_wetlands",
+        args.output_dir / f"{city_slug_value}_wetlands.geojson",
+        f"{city_slug_value}_wetlands",
     )
     write_layer(
         flood,
-        args.output_dir / "chennai_flood_hazard_zones.geojson",
-        "chennai_flood_hazard_zones",
+        args.output_dir / f"{city_slug_value}_flood_hazard_zones.geojson",
+        f"{city_slug_value}_flood_hazard_zones",
     )
     write_layer(
         heat,
-        args.output_dir / "chennai_heat_intensity.geojson",
-        "chennai_heat_intensity",
+        args.output_dir / f"{city_slug_value}_heat_intensity.geojson",
+        f"{city_slug_value}_heat_intensity",
     )
     write_layer(
         growth,
-        args.output_dir / "chennai_growth_suitability.geojson",
-        "chennai_growth_suitability",
+        args.output_dir / f"{city_slug_value}_growth_suitability.geojson",
+        f"{city_slug_value}_growth_suitability",
     )
 
 

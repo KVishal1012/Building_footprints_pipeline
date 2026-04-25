@@ -7,7 +7,14 @@ from pathlib import Path
 from typing import Any
 
 
-PATH_FIELD_NAMES = {"data_dir", "output_dir", "raw_dir", "cache_dir", "structure_path"}
+PATH_FIELD_NAMES = {
+    "data_dir",
+    "output_dir",
+    "raw_dir",
+    "cache_dir",
+    "structure_path",
+    "metrics_output_path",
+}
 
 
 def configure_logging(level: str = "INFO") -> None:

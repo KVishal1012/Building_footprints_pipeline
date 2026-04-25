@@ -6,12 +6,13 @@
       "state": "Tamil Nadu",
       "source_name": "chennai_transit_stations",
       "source_authority": "CMRL_or_open_transit_feed",
-      "path": "India/data/processing/raw/scenarios/chennai_transit_stations.geojson",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_transit_stations.geojson",
       "task": "transit_oriented_growth",
       "run_id": "chennai_scenario_realworld_v1",
       "field_map": {
         "Label": "station_type",
-        "Value": "station_name"
+        "Value": "station_name",
+        "Scenario": "scenario"
       }
     },
     {
@@ -20,12 +21,13 @@
       "state": "Tamil Nadu",
       "source_name": "chennai_waterbodies",
       "source_authority": "NRSC_or_TNGIS",
-      "path": "India/data/processing/raw/scenarios/chennai_waterbodies.geojson",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_waterbodies.geojson",
       "task": "blue_green_network_protection",
       "run_id": "chennai_scenario_realworld_v1",
       "field_map": {
         "Label": "water_type",
-        "Value": "water_name"
+        "Value": "water_name",
+        "Scenario": "scenario"
       }
     },
     {
@@ -34,12 +36,13 @@
       "state": "Tamil Nadu",
       "source_name": "chennai_wetlands",
       "source_authority": "NRSC_or_state_wetland_inventory",
-      "path": "India/data/processing/raw/scenarios/chennai_wetlands.geojson",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_wetlands.geojson",
       "task": "wetland_edge_encroachment",
       "run_id": "chennai_scenario_realworld_v1",
       "field_map": {
         "Label": "wetland_type",
-        "Value": "wetland_name"
+        "Value": "wetland_name",
+        "Scenario": "scenario"
       }
     },
     {
@@ -48,7 +51,7 @@
       "state": "Tamil Nadu",
       "source_name": "chennai_flood_hazard_zones",
       "source_authority": "GCC_or_WRD_or_NDMA",
-      "path": "India/data/processing/raw/scenarios/chennai_flood_hazard_zones.geojson",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_flood_hazard_zones.geojson",
       "task": "floodplain_lock_in",
       "run_id": "chennai_scenario_realworld_v1",
       "field_map": {
@@ -64,13 +67,14 @@
       "state": "Tamil Nadu",
       "source_name": "chennai_heat_intensity",
       "source_authority": "remote_sensing_or_municipal_heat_action_plan",
-      "path": "India/data/processing/raw/scenarios/chennai_heat_intensity.geojson",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_heat_intensity.geojson",
       "task": "heat_island_intensification_corridor",
       "run_id": "chennai_scenario_realworld_v1",
       "field_map": {
         "Label": "heat_class",
         "Score": "score",
-        "Value": "index_value"
+        "Value": "index_value",
+        "Scenario": "scenario"
       }
     },
     {
@@ -79,7 +83,7 @@
       "state": "Tamil Nadu",
       "source_name": "chennai_growth_suitability",
       "source_authority": "CMDA_or_planning_department",
-      "path": "India/data/processing/raw/scenarios/chennai_growth_suitability.geojson",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_growth_suitability.geojson",
       "task": "compound_risk_growth_hotspots",
       "run_id": "chennai_scenario_realworld_v1",
       "field_map": {

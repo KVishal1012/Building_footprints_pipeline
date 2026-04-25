@@ -4,8 +4,8 @@
   },
   "places": [
     {
-      "city": "Chennai",
-      "state": "Tamil Nadu"
+      "city": "Bengaluru",
+      "state": "Karnataka"
     }
   ],
   "structure_config": {
@@ -23,7 +23,7 @@
   "full_source_overrides": {
     "use_parcels": true
   },
-  "scenario_source_config": "India/scenario_sources.example.json",
+  "scenario_source_config": "India/scenario_sources_bengaluru.example.json",
   "processing_config": {
     "data_dir": "India/data",
     "structure_path": "India/data/output/structures_master.parquet",
@@ -37,6 +37,6 @@
     "enforce_geometry_non_empty": true,
     "enforce_field_map_columns": true,
     "max_null_scenario_rate": 0.05,
-    "metrics_output_path": "India/data/processing/output/processing_metrics.json"
+    "metrics_output_path": "India/data/processing/output/processing_metrics_bengaluru.json"
   }
 }

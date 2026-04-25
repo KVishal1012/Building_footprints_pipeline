@@ -140,12 +140,21 @@ class ProcessingConfig:
     strict_sources: bool = False
     write_run_metadata: bool = True
     min_intersection_area_m2: float = 1.0
+    enforce_crs: bool = True
+    enforce_geometry_non_empty: bool = True
+    enforce_field_map_columns: bool = True
+    max_null_scenario_rate: float = 0.05
+    metrics_output_path: Path | None = None
 
     def __post_init__(self) -> None:
         self.data_dir = Path(self.data_dir)
         self.structure_path = Path(self.structure_path)
         self.output_dir = Path(self.output_dir)
         self.raw_dir = Path(self.raw_dir)
+        if self.metrics_output_path is not None:
+            self.metrics_output_path = Path(self.metrics_output_path)
+        else:
+            self.metrics_output_path = self.output_dir / "processing_metrics.json"
         self.validate()
 
     def validate(self) -> None:
@@ -153,10 +162,14 @@ class ProcessingConfig:
             raise ValueError("country must not be empty")
         if self.min_intersection_area_m2 < 0:
             raise ValueError("min_intersection_area_m2 must not be negative")
+        if not 0 <= self.max_null_scenario_rate <= 1:
+            raise ValueError("max_null_scenario_rate must be between 0 and 1")
 
     def ensure_dirs(self) -> None:
         for path in (self.output_dir, self.raw_dir):
             path.mkdir(parents=True, exist_ok=True)
+        if self.metrics_output_path is not None:
+            self.metrics_output_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 def slugify(*parts: str) -> str:
@@ -259,8 +272,31 @@ def read_processing_source(source: dict, config: ProcessingConfig) -> gpd.GeoDat
         gdf = gpd.read_file(path)
 
     if gdf.crs is None:
+        if config.enforce_crs:
+            raise ValueError(f"Processing source {path} is missing CRS")
         gdf = gdf.set_crs(source.get("crs", "EPSG:4326"))
-    return clean_geometry(gdf.to_crs(epsg=4326))
+
+    if config.enforce_field_map_columns:
+        field_map = source.get("field_map", {}) or {}
+        normalized = {normalize_field_name(column): column for column in gdf.columns}
+        for canonical_name, mapped in field_map.items():
+            candidates = mapped if isinstance(mapped, list) else [mapped]
+            found = False
+            for candidate in candidates:
+                if normalize_field_name(str(candidate)) in normalized:
+                    found = True
+                    break
+            if not found:
+                raise ValueError(
+                    f"Processing source {path} field_map requires missing column for "
+                    f"{canonical_name}: {mapped}"
+                )
+
+    original_row_count = len(gdf)
+    cleaned = clean_geometry(gdf.to_crs(epsg=4326))
+    if config.enforce_geometry_non_empty and original_row_count > 0 and cleaned.empty:
+        raise ValueError(f"Processing source {path} has no valid geometries after cleanup")
+    return cleaned
 
 
 def scalar_source_value(source: dict, *keys: str, default=None):
@@ -501,17 +537,96 @@ def write_processing_outputs(
     return layer_path, link_path
 
 
+def build_processing_metrics(
+    layers: gpd.GeoDataFrame, links: pd.DataFrame, structures: gpd.GeoDataFrame
+) -> dict:
+    total_structures = int(len(structures))
+    unique_linked_structures = int(links["StructureID"].nunique()) if not links.empty else 0
+    link_rate = (
+        float(unique_linked_structures / total_structures)
+        if total_structures > 0
+        else 0.0
+    )
+
+    scenario_layer_counts = (
+        layers.groupby("Scenario", dropna=False)["LayerID"].count().to_dict()
+        if not layers.empty
+        else {}
+    )
+    scenario_link_counts = (
+        links.groupby("Scenario", dropna=False)["StructureID"].count().to_dict()
+        if not links.empty
+        else {}
+    )
+    scenario_unique_structures = (
+        links.groupby("Scenario", dropna=False)["StructureID"].nunique().to_dict()
+        if not links.empty
+        else {}
+    )
+    scenario_coverage = {}
+    for scenario_key in set(scenario_layer_counts) | set(scenario_link_counts):
+        linked_count = int(scenario_unique_structures.get(scenario_key, 0))
+        scenario_coverage[str(scenario_key)] = {
+            "layer_rows": int(scenario_layer_counts.get(scenario_key, 0)),
+            "structure_links": int(scenario_link_counts.get(scenario_key, 0)),
+            "unique_linked_structures": linked_count,
+            "link_rate": float(linked_count / total_structures) if total_structures > 0 else 0.0,
+        }
+
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "total_layer_rows": int(len(layers)),
+        "rows_by_source_name": layers["SourceName"].value_counts(dropna=False).to_dict()
+        if not layers.empty
+        else {},
+        "rows_by_layer_type": layers["LayerType"].value_counts(dropna=False).to_dict()
+        if not layers.empty
+        else {},
+        "rows_by_scenario": {str(k): int(v) for k, v in scenario_layer_counts.items()},
+        "total_links": int(len(links)),
+        "unique_linked_structures": unique_linked_structures,
+        "total_structures": total_structures,
+        "link_rate": link_rate,
+        "scenario_coverage": scenario_coverage,
+    }
+
+
+def write_processing_metrics(metrics: dict, config: ProcessingConfig) -> Path:
+    if config.metrics_output_path is None:
+        raise ValueError("metrics_output_path must not be None")
+    config.metrics_output_path.parent.mkdir(parents=True, exist_ok=True)
+    config.metrics_output_path.write_text(json.dumps(metrics, indent=2) + "\n")
+    return config.metrics_output_path
+
+
 def run_processing_pipeline(
     sources: list[dict], config: ProcessingConfig | None = None
 ) -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
     config = config or ProcessingConfig()
     config.ensure_dirs()
     layers = load_processing_layers(sources, config)
+    if not layers.empty:
+        null_scenario_rate = float(layers["Scenario"].isna().mean())
+        if null_scenario_rate > config.max_null_scenario_rate:
+            raise ValueError(
+                f"Scenario null rate {null_scenario_rate:.2%} exceeds "
+                f"max_null_scenario_rate={config.max_null_scenario_rate:.2%}"
+            )
     structures = load_structures(config)
     links = link_processing_layers_to_structures(structures, layers, config)
     layer_path, link_path = write_processing_outputs(layers, links, config)
+    metrics = build_processing_metrics(layers, links, structures)
+    metrics_path = write_processing_metrics(metrics, config)
     print(f"Saved {len(layers):,} processing layer rows to {layer_path}")
     print(f"Saved {len(links):,} structure-processing links to {link_path}")
+    print(f"Saved processing metrics to {metrics_path}")
+    print(
+        "Processing metrics: "
+        f"rows={metrics['total_layer_rows']:,}, "
+        f"links={metrics['total_links']:,}, "
+        f"linked_structures={metrics['unique_linked_structures']:,}, "
+        f"link_rate={metrics['link_rate']:.2%}"
+    )
     return layers, links
 
 
@@ -529,7 +644,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--source-config",
-        required=True,
+        required=False,
         type=Path,
         help="JSON file containing processing source specs.",
     )
@@ -550,6 +665,20 @@ def main() -> None:
     parser.add_argument("--strict-sources", action="store_true")
     parser.add_argument("--no-metadata", action="store_true")
     parser.add_argument("--min-intersection-area-m2", default=1.0, type=float)
+    parser.add_argument("--max-null-scenario-rate", default=0.05, type=float)
+    parser.add_argument("--disable-enforce-crs", action="store_true")
+    parser.add_argument("--disable-enforce-geometry-non-empty", action="store_true")
+    parser.add_argument("--disable-enforce-field-map-columns", action="store_true")
+    parser.add_argument(
+        "--metrics-output-path",
+        type=Path,
+        default=MODULE_DIR / "data/processing/output/processing_metrics.json",
+    )
+    parser.add_argument(
+        "--report-metrics-only",
+        action="store_true",
+        help="Print metrics from existing outputs and exit.",
+    )
     args = parser.parse_args()
 
     config = ProcessingConfig(
@@ -561,7 +690,22 @@ def main() -> None:
         strict_sources=args.strict_sources,
         write_run_metadata=not args.no_metadata,
         min_intersection_area_m2=args.min_intersection_area_m2,
+        enforce_crs=not args.disable_enforce_crs,
+        enforce_geometry_non_empty=not args.disable_enforce_geometry_non_empty,
+        enforce_field_map_columns=not args.disable_enforce_field_map_columns,
+        max_null_scenario_rate=args.max_null_scenario_rate,
+        metrics_output_path=args.metrics_output_path,
     )
+    if args.report_metrics_only:
+        layers = gpd.read_parquet(config.output_dir / "processing_layers.parquet")
+        links = pd.read_parquet(config.output_dir / "structure_processing_links.parquet")
+        structures = load_structures(config)
+        metrics = build_processing_metrics(layers, links, structures)
+        print(json.dumps(metrics, indent=2))
+        return
+
+    if args.source_config is None:
+        raise ValueError("--source-config is required unless --report-metrics-only is set")
     run_processing_pipeline(read_source_config(args.source_config), config)
 
 

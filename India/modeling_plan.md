@@ -126,3 +126,16 @@ Scenario source specs for real datasets are templated in:
 ```text
 India/scenario_sources.example.json
 ```
+
+Bengaluru template configs:
+
+```text
+India/scenario_sources_bengaluru.example.json
+India/realworld_sequence_bengaluru_config.example.json
+```
+
+Metrics report command after processing:
+
+```bash
+.venv/bin/python India/processing_pipeline.py --report-metrics-only --output-dir India/data/processing/output --structure-path India/data/output/structures_master.parquet
+```

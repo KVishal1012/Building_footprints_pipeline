@@ -2,7 +2,7 @@
   "logging": {
     "level": "INFO"
   },
-  "source_config": "India/processing_sources.example.json",
+  "source_config": "India/urban_growth_sources.example.json",
   "config": {
     "data_dir": "India/data",
     "structure_path": "India/data/output/structures_master.parquet",
