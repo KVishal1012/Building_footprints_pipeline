@@ -1,0 +1,190 @@
+{
+  "sources": [
+    {
+      "layer_type": "planning_context",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_transit_stations",
+      "source_authority": "CMRL_or_open_transit_feed",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_transit_stations.geojson",
+      "task": "transit_oriented_growth",
+      "run_id": "chennai_scenario_realworld_v1",
+      "field_map": {
+        "Label": "station_type",
+        "Value": "station_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "planning_context",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_waterbodies",
+      "source_authority": "NRSC_or_TNGIS",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_waterbodies.geojson",
+      "task": "blue_green_network_protection",
+      "run_id": "chennai_scenario_realworld_v1",
+      "field_map": {
+        "Label": "water_type",
+        "Value": "water_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "planning_context",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_wetlands",
+      "source_authority": "NRSC_or_state_wetland_inventory",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_wetlands.geojson",
+      "task": "wetland_edge_encroachment",
+      "run_id": "chennai_scenario_realworld_v1",
+      "field_map": {
+        "Label": "wetland_type",
+        "Value": "wetland_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "flood_prediction",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_flood_hazard_zones",
+      "source_authority": "GCC_or_WRD_or_NDMA",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_flood_hazard_zones.geojson",
+      "task": "floodplain_lock_in",
+      "run_id": "chennai_scenario_realworld_v1",
+      "field_map": {
+        "Label": "risk_class",
+        "DepthM": "depth_m",
+        "Probability": "probability",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_heat_intensity",
+      "source_authority": "remote_sensing_or_municipal_heat_action_plan",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_heat_intensity.geojson",
+      "task": "heat_island_intensification_corridor",
+      "run_id": "chennai_scenario_realworld_v1",
+      "field_map": {
+        "Label": "heat_class",
+        "Score": "score",
+        "Value": "index_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_growth_suitability",
+      "source_authority": "CMDA_or_planning_department",
+      "path": "India/data/processing/raw/scenarios/chennai_tamil_nadu_india_growth_suitability.geojson",
+      "task": "compound_risk_growth_hotspots",
+      "run_id": "chennai_scenario_realworld_v1",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "planning_context",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "source_name": "bengaluru_transit_stations",
+      "source_authority": "BMTC_or_open_transit_feed",
+      "path": "India/data/processing/raw/scenarios/bengaluru_karnataka_india_transit_stations.geojson",
+      "task": "transit_oriented_growth",
+      "run_id": "bengaluru_scenario_realworld_v1",
+      "field_map": {
+        "Label": "station_type",
+        "Value": "station_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "planning_context",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "source_name": "bengaluru_waterbodies",
+      "source_authority": "BDA_or_state_gis",
+      "path": "India/data/processing/raw/scenarios/bengaluru_karnataka_india_waterbodies.geojson",
+      "task": "blue_green_network_protection",
+      "run_id": "bengaluru_scenario_realworld_v1",
+      "field_map": {
+        "Label": "water_type",
+        "Value": "water_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "planning_context",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "source_name": "bengaluru_wetlands",
+      "source_authority": "state_wetland_inventory",
+      "path": "India/data/processing/raw/scenarios/bengaluru_karnataka_india_wetlands.geojson",
+      "task": "wetland_edge_encroachment",
+      "run_id": "bengaluru_scenario_realworld_v1",
+      "field_map": {
+        "Label": "wetland_type",
+        "Value": "wetland_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "flood_prediction",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "source_name": "bengaluru_flood_hazard_zones",
+      "source_authority": "municipal_or_state_disaster_data",
+      "path": "India/data/processing/raw/scenarios/bengaluru_karnataka_india_flood_hazard_zones.geojson",
+      "task": "floodplain_lock_in",
+      "run_id": "bengaluru_scenario_realworld_v1",
+      "field_map": {
+        "Label": "risk_class",
+        "DepthM": "depth_m",
+        "Probability": "probability",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "source_name": "bengaluru_heat_intensity",
+      "source_authority": "remote_sensing_or_heat_action_plan",
+      "path": "India/data/processing/raw/scenarios/bengaluru_karnataka_india_heat_intensity.geojson",
+      "task": "heat_island_intensification_corridor",
+      "run_id": "bengaluru_scenario_realworld_v1",
+      "field_map": {
+        "Label": "heat_class",
+        "Score": "score",
+        "Value": "index_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "source_name": "bengaluru_growth_suitability",
+      "source_authority": "planning_department",
+      "path": "India/data/processing/raw/scenarios/bengaluru_karnataka_india_growth_suitability.geojson",
+      "task": "compound_risk_growth_hotspots",
+      "run_id": "bengaluru_scenario_realworld_v1",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    }
+  ]
+}

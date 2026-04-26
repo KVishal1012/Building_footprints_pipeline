@@ -10,6 +10,10 @@ data/output/
 India/cache/
 India/data/raw/
 India/data/output/
+India/data/processing/raw/
+India/data/processing/output/
+India/data/processing/output*/
+India/data/processing/.DS_Store
 
 .env
 .DS_Store

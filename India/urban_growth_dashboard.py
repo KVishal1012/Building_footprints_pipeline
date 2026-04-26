@@ -231,17 +231,17 @@ APP_CSS = """
 
 
 @st.cache_data(show_spinner=False)
-def load_layers(path: str) -> gpd.GeoDataFrame:
+def load_layers(path: str, file_mtime: float) -> gpd.GeoDataFrame:
     return gpd.read_parquet(path)
 
 
 @st.cache_data(show_spinner=False)
-def load_links(path: str) -> pd.DataFrame:
+def load_links(path: str, file_mtime: float) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
 @st.cache_data(show_spinner=False)
-def load_metrics(path: str) -> dict:
+def load_metrics(path: str, file_mtime: float | None) -> dict:
     if not Path(path).exists():
         return {}
     return json.loads(Path(path).read_text())
@@ -421,9 +421,12 @@ def main() -> None:
         )
         return
 
-    layers = load_layers(str(layers_file)).copy()
-    links = load_links(str(links_file)).copy()
-    metrics = load_metrics(metrics_path)
+    metrics_file = Path(metrics_path)
+    layers = load_layers(str(layers_file), layers_file.stat().st_mtime).copy()
+    links = load_links(str(links_file), links_file.stat().st_mtime).copy()
+    metrics = load_metrics(
+        metrics_path, metrics_file.stat().st_mtime if metrics_file.exists() else None
+    )
     group_column = mode_column(display_mode)
     options = sorted(
         layers[group_column].dropna().astype("string").unique().tolist()
@@ -431,12 +434,15 @@ def main() -> None:
 
     with st.sidebar:
         city_options = sorted(layers["City"].dropna().astype("string").unique().tolist())
-        selected_city = st.selectbox("City", city_options, index=0) if city_options else None
+        city_choices = ["All cities"] + city_options
+        selected_city = (
+            st.selectbox("City", city_choices, index=0) if city_options else "All cities"
+        )
         selected = st.multiselect(display_mode, options, default=options)
         run_requested = st.button("Run Simulation", use_container_width=True)
         st.caption("Controls filter the current pipeline outputs. The run button marks a review state in this UI.")
 
-    if selected_city:
+    if selected_city != "All cities":
         layers = layers[layers["City"].astype("string") == selected_city].copy()
         links = links[links["City"].astype("string") == selected_city].copy()
     filtered_layers = layers[layers[group_column].astype("string").isin(selected)].copy()
@@ -458,7 +464,7 @@ def main() -> None:
                     <div class="subtitle">Real OSM context and derived scenario indicators for structure-level planning review.</div>
                 </div>
                 <div class="status-row">
-                    <span class="chip teal">{selected_city or 'All cities'}</span>
+                    <span class="chip teal">{selected_city}</span>
                     <span class="chip">{display_mode}</span>
                     <span class="chip amber">Pipeline outputs</span>
                 </div>

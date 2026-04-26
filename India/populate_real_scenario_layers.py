@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import time
 from pathlib import Path
 
 import geopandas as gpd
@@ -113,7 +114,20 @@ def series_from(gdf: gpd.GeoDataFrame, column: str, default: str | None = None) 
 
 def fetch_osm(boundary_polygon, tags: dict, name: str) -> gpd.GeoDataFrame:
     LOGGER.info("Downloading OSM %s features", name)
-    raw = ox.features_from_polygon(boundary_polygon, tags=tags).reset_index()
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            raw = ox.features_from_polygon(boundary_polygon, tags=tags).reset_index()
+            break
+        except Exception as exc:
+            last_error = exc
+            LOGGER.warning(
+                "OSM %s fetch attempt %s failed: %s", name, attempt, exc
+            )
+            time.sleep(attempt * 2)
+    else:
+        LOGGER.warning("No OSM %s features fetched after retries: %s", name, last_error)
+        return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
     if raw.empty:
         LOGGER.warning("No OSM features returned for %s", name)
         return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")

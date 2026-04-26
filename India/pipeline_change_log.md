@@ -70,6 +70,23 @@ Implemented in one pass:
   - Added Bengaluru sequence config: `India/realworld_sequence_bengaluru_config.example.json`.
   - Updated Chennai templates with full `Scenario` mapping and quality-gate config.
 
+### Request: Show Bengaluru In Dashboard
+
+User noted that the dashboard only showed Chennai.
+
+Implemented changes:
+
+- Added an `All cities` option to the dashboard city selector.
+- Updated dashboard data loading so cached parquet/metrics reads invalidate when files are updated.
+- Added multi-city run config:
+  - `India/realworld_sequence_multicity_config.example.json`
+  - `India/scenario_sources_multicity.example.json`
+- Added `scripts/merge_india_processing_outputs.py` to merge lightweight per-city processing outputs for dashboard use without requiring a huge combined structures parquet.
+- Generated Bengaluru scenario layers and processed them against `bengaluru_karnataka_india_structures.parquet`.
+- Merged Chennai and Bengaluru processing outputs for the live dashboard:
+  - Chennai: 7,722 layer rows, 1,852 links
+  - Bengaluru: 14,710 layer rows, 3,035 links
+
 ## 2026-04-24
 
 ### Request: Add Streamlit Urban-Growth Review Dashboard
