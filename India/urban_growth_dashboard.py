@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 import json
 from pathlib import Path
 
@@ -12,6 +13,7 @@ MODULE_DIR = Path(__file__).resolve().parent
 DEFAULT_LAYERS_PATH = MODULE_DIR / "data/processing/output/processing_layers.parquet"
 DEFAULT_LINKS_PATH = MODULE_DIR / "data/processing/output/structure_processing_links.parquet"
 DEFAULT_METRICS_PATH = MODULE_DIR / "data/processing/output/processing_metrics.json"
+ALL_CITIES_LABEL = "All cities"
 
 
 APP_CSS = """
@@ -128,6 +130,54 @@ APP_CSS = """
         color: var(--muted);
         font-size: 0.78rem;
         margin-top: 8px;
+    }
+    .method-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .method-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+        background: #fbfdfc;
+        min-height: 126px;
+    }
+    .method-card.active {
+        border-color: rgba(13,124,115,0.38);
+        background: linear-gradient(180deg, rgba(13,124,115,0.10), #fbfdfc);
+    }
+    .method-card.future {
+        border-style: dashed;
+        background: #fffaf3;
+    }
+    .method-status {
+        display: inline-flex;
+        width: fit-content;
+        border-radius: 999px;
+        padding: 4px 8px;
+        margin-bottom: 8px;
+        color: #07514b;
+        background: var(--teal-soft);
+        font-size: 0.72rem;
+        font-weight: 760;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .method-status.future {
+        color: #714713;
+        background: var(--amber-soft);
+    }
+    .method-title {
+        color: var(--ink);
+        font-size: 0.92rem;
+        font-weight: 780;
+        margin-bottom: 6px;
+    }
+    .method-copy {
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.38;
     }
     .panel {
         border: 1px solid var(--line);
@@ -272,6 +322,10 @@ def readable_label(value: str) -> str:
     return str(value).replace("_", " ").title()
 
 
+def safe_text(value: object) -> str:
+    return escape(str(value))
+
+
 def mode_column(mode: str) -> str:
     lookup = {
         "Scenario": "Scenario",
@@ -279,6 +333,153 @@ def mode_column(mode: str) -> str:
         "SourceName": "SourceName",
     }
     return lookup[mode]
+
+
+def available_columns(frame: pd.DataFrame, columns: list[str]) -> list[str]:
+    return [column for column in unique_columns(columns) if column in frame.columns]
+
+
+def non_empty_unique(frame: pd.DataFrame, column: str) -> list[str]:
+    if column not in frame.columns:
+        return []
+    values = frame[column].dropna().astype("string").str.strip()
+    return sorted(value for value in values.unique().tolist() if value)
+
+
+def format_timestamp(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "Unavailable"
+    timestamp = pd.to_datetime(value, utc=True, errors="coerce")
+    if pd.isna(timestamp):
+        return str(value)
+    return timestamp.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def latest_run_timestamp(layers: pd.DataFrame | pd.Series) -> str:
+    if isinstance(layers, pd.Series):
+        timestamps = pd.to_datetime(layers, utc=True, errors="coerce").dropna()
+        if timestamps.empty:
+            return "Unavailable"
+        return format_timestamp(timestamps.max())
+    if layers.empty or "RunTimestamp" not in layers.columns:
+        return "Unavailable"
+    timestamps = pd.to_datetime(layers["RunTimestamp"], utc=True, errors="coerce").dropna()
+    if timestamps.empty:
+        return "Unavailable"
+    return format_timestamp(timestamps.max())
+
+
+def prediction_method_status(layers: pd.DataFrame) -> dict[str, object]:
+    model_values = non_empty_unique(layers, "ModelFamily") + non_empty_unique(layers, "ModelName")
+    non_heuristic_models = [
+        value
+        for value in model_values
+        if "heuristic" not in value.lower() and "baseline" not in value.lower()
+    ]
+    model_loaded = bool(non_heuristic_models)
+    if model_loaded:
+        return {
+            "active_label": "Model prediction",
+            "active_status": "Loaded",
+            "active_detail": "Model prediction layers are present in the selected outputs.",
+            "future_label": "Heuristic baseline",
+            "future_status": "Reference",
+            "future_detail": "Baseline scenario indicators remain available for comparison.",
+            "is_model_loaded": True,
+        }
+    return {
+        "active_label": "Heuristic baseline",
+        "active_status": "Active",
+        "active_detail": (
+            "Scores are deterministic scenario indicators derived from OSM/context "
+            "geometry and structure density. They are not deep-learning predictions."
+        ),
+        "future_label": "AI/deep-learning model",
+        "future_status": "Not loaded",
+        "future_detail": "A model output layer will appear here after prediction ingestion is added.",
+        "is_model_loaded": False,
+    }
+
+
+def filter_by_city(
+    layers: gpd.GeoDataFrame, links: pd.DataFrame, selected_city: str
+) -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
+    if selected_city == ALL_CITIES_LABEL or "City" not in layers.columns:
+        return layers.copy(), links.copy()
+    city_layers = layers[layers["City"].astype("string") == selected_city].copy()
+    if "City" not in links.columns:
+        return city_layers, links.copy()
+    city_links = links[links["City"].astype("string") == selected_city].copy()
+    return city_layers, city_links
+
+
+def filter_by_group(
+    layers: gpd.GeoDataFrame,
+    links: pd.DataFrame,
+    group_column: str,
+    selected: list[str],
+) -> tuple[gpd.GeoDataFrame, pd.DataFrame]:
+    if not selected:
+        return layers.iloc[0:0].copy(), links.iloc[0:0].copy()
+    selected_values = {str(value) for value in selected}
+    filtered_layers = layers[
+        layers[group_column].astype("string").isin(selected_values)
+    ].copy()
+    filtered_links = links[
+        links[group_column].astype("string").isin(selected_values)
+    ].copy()
+    return filtered_layers, filtered_links
+
+
+def city_readiness(layers: pd.DataFrame, links: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "City",
+        "layer_rows",
+        "linked_rows",
+        "linked_structures",
+        "scenarios",
+        "sources",
+        "latest_run",
+    ]
+    if layers.empty or "City" not in layers.columns:
+        return pd.DataFrame(columns=columns)
+    layer_summary = (
+        layers.groupby("City", dropna=False)
+        .agg(
+            layer_rows=("LayerID", "count"),
+            scenarios=("Scenario", "nunique"),
+            sources=("SourceName", "nunique"),
+            latest_run=("RunTimestamp", latest_run_timestamp),
+        )
+        .reset_index()
+    )
+    if links.empty or "City" not in links.columns:
+        link_summary = pd.DataFrame(columns=["City", "linked_rows", "linked_structures"])
+    else:
+        link_summary = (
+            links.groupby("City", dropna=False)
+            .agg(
+                linked_rows=("StructureID", "count"),
+                linked_structures=("StructureID", "nunique"),
+            )
+            .reset_index()
+        )
+    readiness = layer_summary.merge(link_summary, on="City", how="left")
+    readiness[["linked_rows", "linked_structures"]] = readiness[
+        ["linked_rows", "linked_structures"]
+    ].fillna(0)
+    for column in ("layer_rows", "linked_rows", "linked_structures", "scenarios", "sources"):
+        readiness[column] = readiness[column].astype(int)
+    return readiness[columns].sort_values("City").reset_index(drop=True)
+
+
+def link_rate_value(metrics: dict, selected_city: str) -> float | None:
+    if selected_city != ALL_CITIES_LABEL:
+        return None
+    value = metrics.get("link_rate")
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
 
 
 def mode_summary(
@@ -353,10 +554,10 @@ def render_metric_card(label: str, value: str, note: str) -> None:
 
 def render_scenario_stack(summary: pd.DataFrame, group_column: str, limit: int = 8) -> None:
     if summary.empty:
-        st.info("No scenario rows match the current filters.")
+        st.info("No baseline indicator rows match the current filters.")
         return
     for _, row in summary.head(limit).iterrows():
-        label = readable_label(row[group_column])
+        label = safe_text(readable_label(row[group_column]))
         linked = int(row.get("linked_structures", 0))
         layer_rows = int(row.get("layer_rows", 0))
         mean_score = row.get("mean_score")
@@ -381,25 +582,49 @@ def render_source_tiles(summary: pd.DataFrame, limit: int = 6) -> None:
         tiles.append(
             f"""
             <div class="source-tile">
-                <div class="source-title">{readable_label(row['SourceName'])}</div>
+                <div class="source-title">{safe_text(readable_label(row['SourceName']))}</div>
                 <div class="source-count">{format_number(int(row['rows']))}</div>
-                <div class="metric-note">{readable_label(row['LayerType'])}</div>
+                <div class="metric-note">{safe_text(readable_label(row['LayerType']))}</div>
             </div>
             """
         )
     st.markdown(f"<div class=\"source-grid\">{''.join(tiles)}</div>", unsafe_allow_html=True)
 
 
+def render_prediction_method_panel(status: dict[str, object]) -> None:
+    st.markdown(
+        f"""
+        <div class="panel">
+            <div class="panel-title">Prediction Method</div>
+            <div class="panel-caption">Clarifies whether the selected outputs are baseline indicators or model predictions.</div>
+            <div class="method-grid">
+                <div class="method-card active">
+                    <div class="method-status">{safe_text(status['active_status'])}</div>
+                    <div class="method-title">{safe_text(status['active_label'])}</div>
+                    <div class="method-copy">{safe_text(status['active_detail'])}</div>
+                </div>
+                <div class="method-card future">
+                    <div class="method-status future">{safe_text(status['future_status'])}</div>
+                    <div class="method-title">{safe_text(status['future_label'])}</div>
+                    <div class="method-copy">{safe_text(status['future_detail'])}</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     st.set_page_config(
-        page_title="Urban Scenario Simulator",
+        page_title="Urban Scenario Review",
         page_icon=":bar_chart:",
         layout="wide",
     )
     st.markdown(APP_CSS, unsafe_allow_html=True)
 
     with st.sidebar:
-        st.header("Simulation Inputs")
+        st.header("Review Inputs")
         layers_path = st.text_input("Processing layers parquet", str(DEFAULT_LAYERS_PATH))
         links_path = st.text_input("Structure links parquet", str(DEFAULT_LINKS_PATH))
         metrics_path = st.text_input("Metrics JSON", str(DEFAULT_METRICS_PATH))
@@ -428,45 +653,53 @@ def main() -> None:
         metrics_path, metrics_file.stat().st_mtime if metrics_file.exists() else None
     )
     group_column = mode_column(display_mode)
-    options = sorted(
-        layers[group_column].dropna().astype("string").unique().tolist()
-    )
+    readiness = city_readiness(layers, links)
+    prediction_status = prediction_method_status(layers)
 
     with st.sidebar:
         city_options = sorted(layers["City"].dropna().astype("string").unique().tolist())
-        city_choices = ["All cities"] + city_options
+        city_choices = [ALL_CITIES_LABEL] + city_options
         selected_city = (
             st.selectbox("City", city_choices, index=0) if city_options else "All cities"
         )
+        st.caption(
+            f"Available cities: {', '.join(city_options) if city_options else 'none loaded'}"
+        )
+        layers, links = filter_by_city(layers, links, selected_city)
+        options = sorted(
+            layers[group_column].dropna().astype("string").unique().tolist()
+        )
         selected = st.multiselect(display_mode, options, default=options)
-        run_requested = st.button("Run Simulation", use_container_width=True)
-        st.caption("Controls filter the current pipeline outputs. The run button marks a review state in this UI.")
+        review_requested = st.button("Apply Review Filters", use_container_width=True)
+        st.caption(
+            "Controls filter existing pipeline outputs only. No model inference or new simulation run is triggered."
+        )
 
-    if selected_city != "All cities":
-        layers = layers[layers["City"].astype("string") == selected_city].copy()
-        links = links[links["City"].astype("string") == selected_city].copy()
-    filtered_layers = layers[layers[group_column].astype("string").isin(selected)].copy()
-    filtered_links = links[links[group_column].astype("string").isin(selected)].copy()
+    filtered_layers, filtered_links = filter_by_group(layers, links, group_column, selected)
     summary = mode_summary(filtered_layers, filtered_links, display_mode)
     sources = source_summary(filtered_layers)
-    link_rate = (
-        filtered_links["StructureID"].nunique() / metrics.get("total_structures", len(layers))
-        if metrics.get("total_structures", len(layers)) else 0
-    )
+    link_rate = link_rate_value(metrics, selected_city)
+    scenario_count = int(filtered_layers["Scenario"].nunique()) if "Scenario" in filtered_layers else 0
+    source_count = int(filtered_layers["SourceName"].nunique()) if "SourceName" in filtered_layers else 0
+    latest_timestamp = latest_run_timestamp(filtered_layers)
+    linked_structures = filtered_links["StructureID"].nunique() if "StructureID" in filtered_links else 0
+    active_method = str(prediction_status["active_label"])
+    loaded_mode = "Model output loaded" if prediction_status["is_model_loaded"] else "No AI model loaded"
 
     st.markdown(
         f"""
         <section class="app-shell">
             <div class="topbar">
                 <div>
-                    <div class="eyebrow">Geospatial Simulation Workspace</div>
-                    <h1 class="title">Urban Scenario Simulator</h1>
-                    <div class="subtitle">Real OSM context and derived scenario indicators for structure-level planning review.</div>
+                    <div class="eyebrow">Baseline Scenario Review</div>
+                    <h1 class="title">Urban Scenario Review Dashboard</h1>
+                    <div class="subtitle">Real OSM context plus derived scenario indicators for structure-level planning review. Current outputs are heuristic baselines, not deep-learning predictions.</div>
                 </div>
                 <div class="status-row">
-                    <span class="chip teal">{selected_city}</span>
-                    <span class="chip">{display_mode}</span>
-                    <span class="chip amber">Pipeline outputs</span>
+                    <span class="chip teal">{safe_text(selected_city)}</span>
+                    <span class="chip">{safe_text(display_mode)}</span>
+                    <span class="chip amber">{safe_text(active_method)}</span>
+                    <span class="chip">{safe_text(loaded_mode)}</span>
                 </div>
             </div>
         </section>
@@ -474,18 +707,48 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    if run_requested:
-        st.toast("Simulation review filters applied.")
+    if review_requested:
+        st.toast("Review filters applied to existing baseline outputs.")
 
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
     with kpi1:
-        render_metric_card(display_mode, format_number(filtered_layers[group_column].nunique()), "active groups")
+        render_metric_card("Layer Rows", format_number(len(filtered_layers)), "baseline indicator features")
     with kpi2:
-        render_metric_card("Layer Rows", format_number(len(filtered_layers)), "scenario features")
+        render_metric_card("Linked Structures", format_number(linked_structures), "unique matched structures")
     with kpi3:
-        render_metric_card("Structure Links", format_number(len(filtered_links)), "matched records")
+        render_metric_card(
+            "Link Rate",
+            format_percent(link_rate) if link_rate is not None else "n/a",
+            "requires total structures denominator" if link_rate is None else "all-city coverage",
+        )
     with kpi4:
-        render_metric_card("Link Rate", format_percent(link_rate), f"{format_number(filtered_links['StructureID'].nunique())} structures")
+        render_metric_card("Scenarios", format_number(scenario_count), "active scenario IDs")
+    with kpi5:
+        render_metric_card("Sources", format_number(source_count), "active source layers")
+    with kpi6:
+        render_metric_card("Data Timestamp", latest_timestamp, "latest selected run")
+
+    st.markdown(
+        """
+        <div class="panel">
+            <div class="panel-title">City Data Readiness</div>
+            <div class="panel-caption">Loaded city coverage for the current processing outputs. Chennai and Bengaluru are expected in this build.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.dataframe(
+        readiness,
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "layer_rows": st.column_config.NumberColumn("Layer Rows", format="%d"),
+            "linked_rows": st.column_config.NumberColumn("Link Rows", format="%d"),
+            "linked_structures": st.column_config.NumberColumn("Linked Structures", format="%d"),
+            "scenarios": st.column_config.NumberColumn("Scenarios", format="%d"),
+            "sources": st.column_config.NumberColumn("Sources", format="%d"),
+        },
+    )
 
     map_col, control_col = st.columns([1.65, 0.85], gap="large")
 
@@ -493,30 +756,32 @@ def main() -> None:
         st.markdown(
             f"""
             <div class="panel">
-                <div class="panel-title">{display_mode} Simulation Map</div>
-                <div class="panel-caption">Sampled high-score outputs, rendered as geographic simulation points.</div>
+                <div class="panel-title">{safe_text(display_mode)} Baseline Indicator Map</div>
+                <div class="panel-caption">Sampled high-score baseline outputs rendered as geographic review points. This is not a live model inference run.</div>
                 <div class="legend-row">
                     <span class="legend-item"><span class="dot teal"></span>Planning context</span>
                     <span class="legend-item"><span class="dot amber"></span>Urban planning</span>
-                    <span class="legend-item"><span class="dot red"></span>Flood prediction</span>
+                    <span class="legend-item"><span class="dot red"></span>Flood baseline</span>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
         if filtered_layers.empty:
-            st.info("Select at least one output group.")
+            st.info("Select at least one city and output group to view baseline indicators.")
         else:
             sample = map_sample(filtered_layers, max_map_features, display_mode)
             st.map(sample[["lat", "lon"]], latitude="lat", longitude="lon", size=18)
-        timeline_step = st.slider("Simulation timeline", 0, 100, 65, step=5)
-        st.caption(f"Review frame: {timeline_step}% of selected scenario horizon")
+        timeline_step = st.slider("Scenario horizon marker", 0, 100, 65, step=5)
+        st.caption(f"Review marker: {timeline_step}% of selected scenario horizon. This control does not execute a forecast.")
 
     with control_col:
+        render_prediction_method_panel(prediction_status)
+
         st.markdown(
             """
             <div class="panel">
-                <div class="panel-title">Scenario Stack</div>
+                <div class="panel-title">Output Stack</div>
                 <div class="panel-caption">Highest-level output groups available for current filters.</div>
             """,
             unsafe_allow_html=True,
@@ -528,7 +793,7 @@ def main() -> None:
             """
             <div class="panel">
                 <div class="panel-title">Source Layers</div>
-                <div class="panel-caption">Input layers feeding the simulation output.</div>
+                <div class="panel-caption">Input layers feeding the current baseline output.</div>
             """,
             unsafe_allow_html=True,
         )
@@ -563,27 +828,31 @@ def main() -> None:
                 "RunTimestamp",
             ]
         )
-        source_table = (
-            filtered_layers[source_columns]
-            .drop_duplicates()
-            .sort_values(group_column)
-        )
+        source_table_columns = available_columns(filtered_layers, source_columns)
+        source_table = filtered_layers[source_table_columns].drop_duplicates()
+        if group_column in source_table.columns:
+            source_table = source_table.sort_values(group_column)
         st.dataframe(source_table, width="stretch", hide_index=True)
 
     with tab_links:
+        link_columns = available_columns(
+            filtered_links,
+            [
+                group_column,
+                "StructureID",
+                "Label",
+                "Score",
+                "MatchMethod",
+                "MatchArea_m2",
+                "StructureCoverage",
+                "LayerCoverage",
+            ],
+        )
+        link_table = filtered_links[link_columns]
+        if group_column in link_table.columns and "Score" in link_table.columns:
+            link_table = link_table.sort_values([group_column, "Score"], ascending=[True, False])
         st.dataframe(
-            filtered_links[
-                unique_columns([
-                    group_column,
-                    "StructureID",
-                    "Label",
-                    "Score",
-                    "MatchMethod",
-                    "MatchArea_m2",
-                    "StructureCoverage",
-                    "LayerCoverage",
-                ])
-            ].sort_values([group_column, "Score"], ascending=[True, False]),
+            link_table,
             width="stretch",
             hide_index=True,
         )
@@ -596,21 +865,33 @@ def main() -> None:
                 "unique_linked_structures", links["StructureID"].nunique()
             ),
             "link_rate": metrics.get("link_rate", link_rate),
-            "scenario_count": int(layers["Scenario"].nunique()),
+            "scenario_count": scenario_count,
+            "source_count": source_count,
+            "selected_city": selected_city,
+            "display_mode": display_mode,
+            "prediction_method": active_method,
+            "model_prediction_loaded": bool(prediction_status["is_model_loaded"]),
+            "latest_selected_run": latest_timestamp,
+            "metrics_generated_at_utc": metrics.get("generated_at_utc"),
         }
         st.json(metric_payload)
+        metric_columns = available_columns(
+            filtered_layers,
+            [
+                group_column,
+                "Label",
+                "Score",
+                "Value",
+                "SourceName",
+                "SourceAuthority",
+                "RunID",
+            ],
+        )
+        metric_table = filtered_layers[metric_columns]
+        if group_column in metric_table.columns and "Score" in metric_table.columns:
+            metric_table = metric_table.sort_values([group_column, "Score"], ascending=[True, False])
         st.dataframe(
-            filtered_layers[
-                unique_columns([
-                    group_column,
-                    "Label",
-                    "Score",
-                    "Value",
-                    "SourceName",
-                    "SourceAuthority",
-                    "RunID",
-                ])
-            ].sort_values([group_column, "Score"], ascending=[True, False]),
+            metric_table,
             width="stretch",
             hide_index=True,
         )
