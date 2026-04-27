@@ -139,3 +139,11 @@ Metrics report command after processing:
 ```bash
 .venv/bin/python India/processing_pipeline.py --report-metrics-only --output-dir India/data/processing/output --structure-path India/data/output/structures_master.parquet
 ```
+
+Baseline evaluation command for current heuristic scenario outputs:
+
+```bash
+.venv/bin/python India/baseline_evaluation.py --layers-path India/data/processing/output/processing_layers.parquet --links-path India/data/processing/output/structure_processing_links.parquet
+```
+
+Use `--structures-path` only when the structures parquet covers the same city set as the layer/link outputs; otherwise link-rate denominators are intentionally reported as `null`.
