@@ -11,3 +11,4 @@ mercantile
 pyarrow
 requests
 overturemaps
+streamlit

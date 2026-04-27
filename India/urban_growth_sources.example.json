@@ -1,0 +1,137 @@
+{
+  "sources": [
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_transit_oriented_infill_growth_proxy",
+      "source_authority": "derived_proxy_from_structures",
+      "path": "data/processing/raw/urban_growth/transit_oriented_infill_growth.geojson",
+      "model_family": "urban_growth_proxy",
+      "model_name": "structure_geometry_heuristic",
+      "model_version": "v0",
+      "task": "urban_growth_proxy",
+      "run_id": "chennai_urban_growth_priority_proxy_v0",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_blue_green_network_protection_proxy",
+      "source_authority": "derived_proxy_from_structures",
+      "path": "data/processing/raw/urban_growth/blue_green_network_protection.geojson",
+      "model_family": "urban_growth_proxy",
+      "model_name": "structure_geometry_heuristic",
+      "model_version": "v0",
+      "task": "urban_growth_proxy",
+      "run_id": "chennai_urban_growth_priority_proxy_v0",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_peripheral_sprawl_along_highways_proxy",
+      "source_authority": "derived_proxy_from_structures",
+      "path": "data/processing/raw/urban_growth/peripheral_sprawl_along_highways.geojson",
+      "model_family": "urban_growth_proxy",
+      "model_name": "structure_geometry_heuristic",
+      "model_version": "v0",
+      "task": "urban_growth_proxy",
+      "run_id": "chennai_urban_growth_priority_proxy_v0",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_wetland_edge_encroachment_proxy",
+      "source_authority": "derived_proxy_from_structures",
+      "path": "data/processing/raw/urban_growth/wetland_edge_encroachment.geojson",
+      "model_family": "urban_growth_proxy",
+      "model_name": "structure_geometry_heuristic",
+      "model_version": "v0",
+      "task": "urban_growth_proxy",
+      "run_id": "chennai_urban_growth_priority_proxy_v0",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_floodplain_lock_in_proxy",
+      "source_authority": "derived_proxy_from_structures",
+      "path": "data/processing/raw/urban_growth/floodplain_lock_in.geojson",
+      "model_family": "urban_growth_proxy",
+      "model_name": "structure_geometry_heuristic",
+      "model_version": "v0",
+      "task": "urban_growth_proxy",
+      "run_id": "chennai_urban_growth_priority_proxy_v0",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_heat_island_intensification_corridor_proxy",
+      "source_authority": "derived_proxy_from_structures",
+      "path": "data/processing/raw/urban_growth/heat_island_intensification_corridor.geojson",
+      "model_family": "urban_growth_proxy",
+      "model_name": "structure_geometry_heuristic",
+      "model_version": "v0",
+      "task": "urban_growth_proxy",
+      "run_id": "chennai_urban_growth_priority_proxy_v0",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "city": "Chennai",
+      "state": "Tamil Nadu",
+      "source_name": "chennai_compound_risk_growth_hotspots_proxy",
+      "source_authority": "derived_proxy_from_structures",
+      "path": "data/processing/raw/urban_growth/compound_risk_growth_hotspots.geojson",
+      "model_family": "urban_growth_proxy",
+      "model_name": "structure_geometry_heuristic",
+      "model_version": "v0",
+      "task": "urban_growth_proxy",
+      "run_id": "chennai_urban_growth_priority_proxy_v0",
+      "field_map": {
+        "Label": "planning_label",
+        "Score": "suitability_score",
+        "Value": "planning_value",
+        "Scenario": "scenario"
+      }
+    }
+  ]
+}

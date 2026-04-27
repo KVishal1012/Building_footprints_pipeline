@@ -134,6 +134,7 @@ The tests cover:
 - duplicate `StructureID` validation
 - processing-layer standardization
 - structure-to-processing spatial link generation
+- mixed point/polygon processing-layer linkage
 
 ## Before Agents
 
