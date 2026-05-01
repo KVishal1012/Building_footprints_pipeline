@@ -47,6 +47,15 @@ python structure_pipeline.py \
   --parcel-source chicago_illinois_usa=/path/to/parcels.gpkg
 ```
 
+Optional boundary data can also be pinned by city slug when you want a local polygon
+instead of live geocoding:
+
+```bash
+python structure_pipeline.py \
+  --place "Chicago, Illinois" \
+  --boundary-source chicago_illinois_usa=/path/to/chicago_boundary.geojson
+```
+
 ## Data Access
 
 Most sources are public and do not require an API key. The script does require internet access for downloads unless cached files already exist locally. Overture downloads use the `overturemaps` Python package CLI.

@@ -1315,6 +1315,22 @@ def normalize_field_name(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value).lower())
 
 
+def boundary_source_for_city(
+    city_slug: str,
+    city: str,
+    state: str,
+    config: PipelineConfig,
+    boundary_source: dict | str | None = None,
+) -> dict | None:
+    return source_for_city(
+        config.boundary_sources,
+        city_slug=city_slug,
+        city=city,
+        state=state,
+        provided_source=boundary_source,
+    )
+
+
 def parcel_source_for_city(
     city_slug: str,
     city: str,
@@ -1719,6 +1735,7 @@ def build_city_structures(
     city: str,
     state: str,
     config: PipelineConfig | None = None,
+    boundary_source: dict | str | None = None,
     parcel_source: dict | str | None = None,
 ) -> gpd.GeoDataFrame:
     config = config or PipelineConfig()
@@ -1728,7 +1745,19 @@ def build_city_structures(
     city_slug = slugify(city, state_name, config.country)
     print(f"\n=== {city}, {state_name} ===")
 
-    boundary = get_city_boundary(city, state_name, config.country)
+    resolved_boundary_source = boundary_source_for_city(
+        city_slug,
+        city,
+        state_name,
+        config,
+        boundary_source=boundary_source,
+    )
+    boundary = get_city_boundary(
+        city,
+        state_name,
+        config.country,
+        boundary_source=resolved_boundary_source,
+    )
     census_household_size, census_source = get_census_household_size(
         city, state_name, config
     )
@@ -1785,6 +1814,7 @@ def build_many_cities(
                 place["city"],
                 place["state"],
                 config,
+                boundary_source=place.get("boundary_source") or place.get("boundary"),
                 parcel_source=place.get("parcel_source") or place.get("parcels"),
             )
         )
@@ -1823,6 +1853,16 @@ def parse_parcel_source_arg(value: str) -> tuple[str, dict]:
     return city_slug.strip(), source
 
 
+def parse_boundary_source_arg(value: str) -> tuple[str, dict]:
+    if "=" not in value:
+        raise argparse.ArgumentTypeError(
+            "Use city_slug=path, for example houston_texas_usa=data/houston_boundary.geojson"
+        )
+    city_slug, source_value = value.split("=", 1)
+    source = {"path": source_value.strip()}
+    return city_slug.strip(), source
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build enriched US structure polygons.")
     parser.add_argument(
@@ -1841,6 +1881,13 @@ def main() -> None:
     parser.add_argument("--no-census", action="store_true")
     parser.add_argument("--no-parcels", action="store_true")
     parser.add_argument(
+        "--boundary-source",
+        action="append",
+        type=parse_boundary_source_arg,
+        default=[],
+        help="Boundary source as city_slug=path. Can be passed multiple times.",
+    )
+    parser.add_argument(
         "--parcel-source",
         action="append",
         type=parse_parcel_source_arg,
@@ -1858,6 +1905,7 @@ def main() -> None:
         use_nsi=not args.no_nsi,
         use_census=not args.no_census,
         use_parcels=not args.no_parcels,
+        boundary_sources=dict(args.boundary_source),
         parcel_sources=dict(args.parcel_source),
     )
     build_many_cities(args.place, config)
