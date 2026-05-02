@@ -11,3 +11,5 @@ mercantile
 pyarrow
 requests
 overturemaps
+duckdb
+pytest

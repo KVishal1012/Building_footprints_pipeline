@@ -1,21 +1,8 @@
-# Building Footprints Pipeline
+# US Building Footprints Pipeline
 
-Python pipeline for building enriched structure polygons for US cities.
+Production-oriented Python pipeline for enriched structure polygons across US Census places in the 50 states plus DC.
 
-The pipeline combines building footprints and attributes from public sources such as Overture Maps, Microsoft building footprints, OpenStreetMap through OSMnx, USACE National Structure Inventory, Census ACS, and optional parcel layers.
-
-## Outputs
-
-For each city, the pipeline writes a GeoParquet file under `data/output/` with structure geometry and normalized attributes such as:
-
-- structure type
-- estimated residential units
-- estimated stories
-- estimated occupant count
-- source flags and confidence fields
-- optional parcel attributes when parcel data is provided
-
-The combined multi-city output is written to `data/output/structures_master.parquet`.
+The pipeline uses Census TIGER/Line place boundaries for reproducible city coverage, Overture Maps as the primary footprint source, Microsoft Global ML Building Footprints as de-duplicated fallback footprints, USACE NSI and ACS for attributes, optional parcel layers, and optional OSM enrichment for single-city/debug runs.
 
 ## Setup
 
@@ -31,28 +18,46 @@ python -m pip install -r requirements.txt
 python structure_pipeline.py --place "Chicago, Illinois"
 ```
 
-Multiple cities can be processed in one run:
+Run all Census places in one or more states:
+
+```bash
+python structure_pipeline.py --state CA --output-dir data/output --source-version latest
+```
+
+Run all Census places in the 50 states plus DC:
+
+```bash
+python structure_pipeline.py --all-us-cities --output-dir data/output --source-version latest
+```
+
+Optional parcel data can be attached by place GEOID or city slug:
 
 ```bash
 python structure_pipeline.py \
   --place "Chicago, Illinois" \
-  --place "Houston, Texas"
+  --parcel-source 1714000=/path/to/parcels.gpkg
 ```
 
-Optional parcel data can be attached by city slug:
+Use `--no-download` to force cached local files only. Use `--use-osm` only for small/debug runs because OSM enrichment calls Overpass through OSMnx.
 
-```bash
-python structure_pipeline.py \
-  --place "Chicago, Illinois" \
-  --parcel-source chicago_illinois_usa=/path/to/parcels.gpkg
-```
+## Outputs
 
-## Data Access
+For each city, the pipeline writes:
 
-Most sources are public and do not require an API key. The script does require internet access for downloads unless cached files already exist locally. Overture downloads use the `overturemaps` Python package CLI.
+- City GeoParquet: `data/output/cities/{statefp}/{place_geoid}_{city_slug}_structures.parquet`
+- Master dataset: `data/output/structures_master/structures_master.parquet`
+- Run manifest: `data/output/manifests/latest_run.json`
+- QA metrics: `data/output/qa/city_metrics.parquet`
 
-Use `--no-download` to force the pipeline to use already cached local files only.
+Required attributes include `StructureType`, `NumUnits`, `NumStories`, `FootprintArea_m2`, `FootprintArea_sqft`, `OccupantCount`, source/method/confidence fields, source release fields, and geometry.
 
-## Notebook
+## Attribute Rules
 
-`test.ipynb` provides an interactive workflow for configuring cities, running the pipeline, and inspecting the output.
+- Footprints are assigned to cities by representative point first, then largest boundary overlap; full building geometry is preserved.
+- Overture footprints are primary. Microsoft footprints are retained only when representative-point and overlap checks show they are not duplicates.
+- Missing units, stories, structure type, and occupant fields remain NULL unless a source or explicit labeled estimate fills them.
+- Occupants use NSI population/employment/student fields first. Residential fallback uses `NumUnits * ACS B25010 average household size` and records the method.
+
+## Data Sources
+
+The pipeline records resolved source versions in the run manifest. Public inputs include Census TIGER/Line and Gazetteer files, Overture Maps STAC/GeoParquet, Microsoft dataset links, USACE NSI, Census ACS, and optional parcel services/files.

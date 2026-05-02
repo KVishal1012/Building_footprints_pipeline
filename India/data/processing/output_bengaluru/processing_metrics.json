@@ -1,0 +1,67 @@
+{
+  "generated_at_utc": "2026-04-26T14:35:40.805425+00:00",
+  "total_layer_rows": 14710,
+  "rows_by_source_name": {
+    "bengaluru_transit_stations": 4553,
+    "bengaluru_flood_hazard_zones": 3036,
+    "bengaluru_heat_intensity": 3036,
+    "bengaluru_growth_suitability": 3036,
+    "bengaluru_waterbodies": 978,
+    "bengaluru_wetlands": 71
+  },
+  "rows_by_layer_type": {
+    "urban_planning": 6072,
+    "planning_context": 5602,
+    "flood_prediction": 3036
+  },
+  "rows_by_scenario": {
+    "bengaluru_karnataka_india_blue_green_network_protection_realworld_v1": 978,
+    "bengaluru_karnataka_india_compound_risk_growth_hotspots_realworld_v1": 3036,
+    "bengaluru_karnataka_india_floodplain_lock_in_realworld_v1": 3036,
+    "bengaluru_karnataka_india_heat_island_intensification_corridor_realworld_v1": 3036,
+    "bengaluru_karnataka_india_transit_oriented_growth_realworld_v1": 4553,
+    "bengaluru_karnataka_india_wetland_edge_encroachment_realworld_v1": 71
+  },
+  "total_links": 3035,
+  "unique_linked_structures": 1142,
+  "total_structures": 1285912,
+  "link_rate": 0.0008880856543838148,
+  "scenario_coverage": {
+    "bengaluru_karnataka_india_heat_island_intensification_corridor_realworld_v1": {
+      "layer_rows": 3036,
+      "structure_links": 792,
+      "unique_linked_structures": 792,
+      "link_rate": 0.0006159052874535738
+    },
+    "bengaluru_karnataka_india_compound_risk_growth_hotspots_realworld_v1": {
+      "layer_rows": 3036,
+      "structure_links": 792,
+      "unique_linked_structures": 792,
+      "link_rate": 0.0006159052874535738
+    },
+    "bengaluru_karnataka_india_blue_green_network_protection_realworld_v1": {
+      "layer_rows": 978,
+      "structure_links": 64,
+      "unique_linked_structures": 52,
+      "link_rate": 4.043822594392151e-05
+    },
+    "bengaluru_karnataka_india_transit_oriented_growth_realworld_v1": {
+      "layer_rows": 4553,
+      "structure_links": 595,
+      "unique_linked_structures": 300,
+      "link_rate": 0.00023329745736877795
+    },
+    "bengaluru_karnataka_india_floodplain_lock_in_realworld_v1": {
+      "layer_rows": 3036,
+      "structure_links": 792,
+      "unique_linked_structures": 792,
+      "link_rate": 0.0006159052874535738
+    },
+    "bengaluru_karnataka_india_wetland_edge_encroachment_realworld_v1": {
+      "layer_rows": 71,
+      "structure_links": 0,
+      "unique_linked_structures": 0,
+      "link_rate": 0.0
+    }
+  }
+}

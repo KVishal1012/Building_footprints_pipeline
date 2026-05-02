@@ -1,0 +1,190 @@
+MICROSOFT_DATASET_LINKS_URL = (
+    "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
+)
+NSI_STRUCTURES_URL = "https://nsi.sec.usace.army.mil/nsiapi/structures?fmt=fc"
+CENSUS_ACS_URL = "https://api.census.gov/data/{year}/acs/acs5"
+OVERTURE_STAC_URL = "https://stac.overturemaps.org/catalog.json"
+OVERTURE_AZURE_BUILDINGS_GLOB = (
+    "https://overturemapswestus2.blob.core.windows.net/release/"
+    "{release}/theme=buildings/type=building/*"
+)
+CENSUS_TIGER_PLACE_URL = (
+    "https://www2.census.gov/geo/tiger/TIGER{year}/PLACE/"
+    "tl_{year}_{statefp}_place.zip"
+)
+CENSUS_GAZETTEER_PLACE_URL = (
+    "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/"
+    "{year}_Gazetteer/{year}_Gaz_place_national.zip"
+)
+
+SQM_TO_SQFT = 10.763910416709722
+
+STATE_FIPS = {
+    "alabama": "01",
+    "alaska": "02",
+    "arizona": "04",
+    "arkansas": "05",
+    "california": "06",
+    "colorado": "08",
+    "connecticut": "09",
+    "delaware": "10",
+    "district of columbia": "11",
+    "florida": "12",
+    "georgia": "13",
+    "hawaii": "15",
+    "idaho": "16",
+    "illinois": "17",
+    "indiana": "18",
+    "iowa": "19",
+    "kansas": "20",
+    "kentucky": "21",
+    "louisiana": "22",
+    "maine": "23",
+    "maryland": "24",
+    "massachusetts": "25",
+    "michigan": "26",
+    "minnesota": "27",
+    "mississippi": "28",
+    "missouri": "29",
+    "montana": "30",
+    "nebraska": "31",
+    "nevada": "32",
+    "new hampshire": "33",
+    "new jersey": "34",
+    "new mexico": "35",
+    "new york": "36",
+    "north carolina": "37",
+    "north dakota": "38",
+    "ohio": "39",
+    "oklahoma": "40",
+    "oregon": "41",
+    "pennsylvania": "42",
+    "rhode island": "44",
+    "south carolina": "45",
+    "south dakota": "46",
+    "tennessee": "47",
+    "texas": "48",
+    "utah": "49",
+    "vermont": "50",
+    "virginia": "51",
+    "washington": "53",
+    "west virginia": "54",
+    "wisconsin": "55",
+    "wyoming": "56",
+}
+
+STATE_ABBR_TO_NAME = {
+    "AL": "Alabama",
+    "AK": "Alaska",
+    "AZ": "Arizona",
+    "AR": "Arkansas",
+    "CA": "California",
+    "CO": "Colorado",
+    "CT": "Connecticut",
+    "DE": "Delaware",
+    "DC": "District of Columbia",
+    "FL": "Florida",
+    "GA": "Georgia",
+    "HI": "Hawaii",
+    "ID": "Idaho",
+    "IL": "Illinois",
+    "IN": "Indiana",
+    "IA": "Iowa",
+    "KS": "Kansas",
+    "KY": "Kentucky",
+    "LA": "Louisiana",
+    "ME": "Maine",
+    "MD": "Maryland",
+    "MA": "Massachusetts",
+    "MI": "Michigan",
+    "MN": "Minnesota",
+    "MS": "Mississippi",
+    "MO": "Missouri",
+    "MT": "Montana",
+    "NE": "Nebraska",
+    "NV": "Nevada",
+    "NH": "New Hampshire",
+    "NJ": "New Jersey",
+    "NM": "New Mexico",
+    "NY": "New York",
+    "NC": "North Carolina",
+    "ND": "North Dakota",
+    "OH": "Ohio",
+    "OK": "Oklahoma",
+    "OR": "Oregon",
+    "PA": "Pennsylvania",
+    "RI": "Rhode Island",
+    "SC": "South Carolina",
+    "SD": "South Dakota",
+    "TN": "Tennessee",
+    "TX": "Texas",
+    "UT": "Utah",
+    "VT": "Vermont",
+    "VA": "Virginia",
+    "WA": "Washington",
+    "WV": "West Virginia",
+    "WI": "Wisconsin",
+    "WY": "Wyoming",
+}
+
+STATE_NAME_TO_ABBR = {name.lower(): abbr for abbr, name in STATE_ABBR_TO_NAME.items()}
+STATEFP_TO_ABBR = {STATE_FIPS[name.lower()]: abbr for abbr, name in STATE_ABBR_TO_NAME.items()}
+STATEFP_TO_NAME = {STATE_FIPS[name.lower()]: name for abbr, name in STATE_ABBR_TO_NAME.items()}
+
+US_STATEFPS_50_DC = tuple(sorted(STATEFP_TO_NAME))
+
+REQUIRED_OUTPUT_COLUMNS = [
+    "StructureID",
+    "PlaceGEOID",
+    "City",
+    "State",
+    "StateFP",
+    "Country",
+    "FootprintSource",
+    "OvertureID",
+    "MicrosoftID",
+    "StructureType",
+    "NumUnits",
+    "NumStories",
+    "FootprintArea_m2",
+    "FootprintArea_sqft",
+    "OccupantCount",
+    "StructureTypeRaw",
+    "StructureTypeSource",
+    "StructureTypeConfidence",
+    "NumUnitsSource",
+    "NumUnitsConfidence",
+    "NumStoriesSource",
+    "NumStoriesConfidence",
+    "OccupantCountSource",
+    "OccupantCountMethod",
+    "OccupantCountConfidence",
+    "OvertureRelease",
+    "CensusYear",
+    "ACSSource",
+    "NSISource",
+    "MicrosoftSource",
+    "FootprintAssignmentMethod",
+    "FootprintAssignmentOverlapRatio",
+    "geometry",
+]
+
+PARCEL_FIELD_ALIASES = {
+    "ParcelID": ["parcel_id", "parcelid", "parcel", "parid", "apn", "pin", "pid"],
+    "ParcelAddress": ["site_address", "situs_address", "property_address", "address"],
+    "ParcelLandUse": ["land_use", "landuse", "use_code", "use_desc", "property_use", "class"],
+    "ParcelZoning": ["zoning", "zone", "zone_code", "zone_desc"],
+    "ParcelOwner": ["owner", "owner_name", "taxpayer", "taxpayer_name"],
+    "ParcelAssessedValue": ["assessed_value", "total_value", "market_value", "appraised_value"],
+    "ParcelYearBuilt": ["year_built", "yr_built", "built_year", "yearbuilt"],
+}
+
+PARCEL_TEXT_COLUMNS = {
+    "ParcelID",
+    "ParcelAddress",
+    "ParcelLandUse",
+    "ParcelZoning",
+    "ParcelOwner",
+    "ParcelSource",
+    "ParcelMatchMethod",
+}

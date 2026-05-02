@@ -1,0 +1,51 @@
+{
+  "created_at": "2026-04-25T15:16:58.821460+00:00",
+  "dataset": "processing_layers",
+  "row_count": 7722,
+  "layer_type_counts": {
+    "urban_planning": 3770,
+    "planning_context": 2067,
+    "flood_prediction": 1885
+  },
+  "output_columns": [
+    "LayerID",
+    "LayerType",
+    "City",
+    "State",
+    "Country",
+    "SourceName",
+    "SourceAuthority",
+    "SourcePath",
+    "ModelFamily",
+    "ModelName",
+    "ModelVersion",
+    "Task",
+    "RunID",
+    "RunTimestamp",
+    "Label",
+    "Score",
+    "Value",
+    "DateFrom",
+    "DateTo",
+    "Scenario",
+    "HorizonHours",
+    "DepthM",
+    "Probability",
+    "geometry"
+  ],
+  "config": {
+    "data_dir": "/Users/koushikannamalai/Downloads/Github/Structures/India/data",
+    "structure_path": "/Users/koushikannamalai/Downloads/Github/Structures/India/data/output/structures_master.parquet",
+    "output_dir": "/Users/koushikannamalai/Downloads/Github/Structures/India/data/processing/output",
+    "raw_dir": "/Users/koushikannamalai/Downloads/Github/Structures/India/data/processing/raw",
+    "country": "India",
+    "strict_sources": false,
+    "write_run_metadata": true,
+    "min_intersection_area_m2": 1.0,
+    "enforce_crs": true,
+    "enforce_geometry_non_empty": true,
+    "enforce_field_map_columns": true,
+    "max_null_scenario_rate": 0.05,
+    "metrics_output_path": "/Users/koushikannamalai/Downloads/Github/Structures/India/data/processing/output/processing_metrics.json"
+  }
+}

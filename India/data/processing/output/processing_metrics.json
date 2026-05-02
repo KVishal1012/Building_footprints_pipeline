@@ -1,0 +1,42 @@
+{
+  "generated_at_utc": "2026-04-26T14:35:46.443077+00:00",
+  "input_dirs": [
+    "India/data/processing/output",
+    "India/data/processing/output_bengaluru"
+  ],
+  "total_layer_rows": 22432,
+  "total_links": 4887,
+  "unique_linked_structures": 1869,
+  "rows_by_city": {
+    "Bengaluru": 14710,
+    "Chennai": 7722
+  },
+  "rows_by_scenario": {
+    "bengaluru_karnataka_india_transit_oriented_growth_realworld_v1": 4553,
+    "bengaluru_karnataka_india_floodplain_lock_in_realworld_v1": 3036,
+    "bengaluru_karnataka_india_heat_island_intensification_corridor_realworld_v1": 3036,
+    "bengaluru_karnataka_india_compound_risk_growth_hotspots_realworld_v1": 3036,
+    "chennai_tamil_nadu_india_floodplain_lock_in_realworld_v1": 1885,
+    "chennai_tamil_nadu_india_heat_island_intensification_corridor_realworld_v1": 1885,
+    "chennai_tamil_nadu_india_compound_risk_growth_hotspots_realworld_v1": 1885,
+    "chennai_tamil_nadu_india_transit_oriented_growth_realworld_v1": 1437,
+    "bengaluru_karnataka_india_blue_green_network_protection_realworld_v1": 978,
+    "chennai_tamil_nadu_india_blue_green_network_protection_realworld_v1": 533,
+    "chennai_tamil_nadu_india_wetland_edge_encroachment_realworld_v1": 97,
+    "bengaluru_karnataka_india_wetland_edge_encroachment_realworld_v1": 71
+  },
+  "rows_by_source_name": {
+    "bengaluru_transit_stations": 4553,
+    "bengaluru_flood_hazard_zones": 3036,
+    "bengaluru_heat_intensity": 3036,
+    "bengaluru_growth_suitability": 3036,
+    "chennai_flood_hazard_zones": 1885,
+    "chennai_heat_intensity": 1885,
+    "chennai_growth_suitability": 1885,
+    "chennai_transit_stations": 1437,
+    "bengaluru_waterbodies": 978,
+    "chennai_waterbodies": 533,
+    "chennai_wetlands": 97,
+    "bengaluru_wetlands": 71
+  }
+}

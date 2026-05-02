@@ -1,0 +1,50 @@
+{
+  "created_at": "2026-04-26T14:23:56.645142+00:00",
+  "dataset": "city_structures",
+  "city_slug": "bengaluru_karnataka_india",
+  "city": "Bengaluru",
+  "state": "Karnataka",
+  "country": "India",
+  "bounds": [
+    77.4598797,
+    12.8334905,
+    77.7840639,
+    13.1426196
+  ],
+  "row_count": 1285912,
+  "source_counts": {
+    "overture_polygons": 1091171,
+    "microsoft_polygons": 597672,
+    "merged_footprints_overture_microsoft": 1285912,
+    "merged_footprints_after_osm": 1285912,
+    "osm_building_polygons": 0,
+    "nsi_structure_points": 0,
+    "parcel_polygons": 0
+  },
+  "config": {
+    "data_dir": "/Users/koushikannamalai/Downloads/Github/Structures/India/data",
+    "output_dir": "/Users/koushikannamalai/Downloads/Github/Structures/India/data/output",
+    "raw_dir": "/Users/koushikannamalai/Downloads/Github/Structures/India/data/raw",
+    "cache_dir": "/Users/koushikannamalai/Downloads/Github/Structures/India/cache",
+    "country": "India",
+    "download_missing": true,
+    "use_overture": true,
+    "use_microsoft": true,
+    "use_osm": true,
+    "use_nsi": false,
+    "use_census": false,
+    "use_parcels": true,
+    "add_microsoft_unmatched": true,
+    "add_osm_unmatched": true,
+    "overture_release": null,
+    "nsi_tile_size_deg": 0.08,
+    "request_timeout_sec": 90,
+    "microsoft_zoom": 9,
+    "parcel_sources": {},
+    "cache_remote_parcels": true,
+    "strict_sources": false,
+    "fail_on_empty_output": false,
+    "write_run_metadata": true,
+    "generic_microsoft_cache_slugs": []
+  }
+}

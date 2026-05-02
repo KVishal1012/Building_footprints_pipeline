@@ -1,0 +1,51 @@
+{
+  "created_at": "2026-04-26T14:35:40.803289+00:00",
+  "dataset": "processing_layers",
+  "row_count": 14710,
+  "layer_type_counts": {
+    "urban_planning": 6072,
+    "planning_context": 5602,
+    "flood_prediction": 3036
+  },
+  "output_columns": [
+    "LayerID",
+    "LayerType",
+    "City",
+    "State",
+    "Country",
+    "SourceName",
+    "SourceAuthority",
+    "SourcePath",
+    "ModelFamily",
+    "ModelName",
+    "ModelVersion",
+    "Task",
+    "RunID",
+    "RunTimestamp",
+    "Label",
+    "Score",
+    "Value",
+    "DateFrom",
+    "DateTo",
+    "Scenario",
+    "HorizonHours",
+    "DepthM",
+    "Probability",
+    "geometry"
+  ],
+  "config": {
+    "data_dir": "/Users/koushikannamalai/Downloads/Github/Structures/India/data",
+    "structure_path": "India/data/output/bengaluru_karnataka_india_structures.parquet",
+    "output_dir": "India/data/processing/output_bengaluru",
+    "raw_dir": "India/data/processing/raw",
+    "country": "India",
+    "strict_sources": false,
+    "write_run_metadata": true,
+    "min_intersection_area_m2": 1.0,
+    "enforce_crs": true,
+    "enforce_geometry_non_empty": true,
+    "enforce_field_map_columns": true,
+    "max_null_scenario_rate": 0.05,
+    "metrics_output_path": "India/data/processing/output_bengaluru/processing_metrics.json"
+  }
+}
