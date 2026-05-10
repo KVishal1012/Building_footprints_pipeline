@@ -1,0 +1,65 @@
+{
+  "defaults": {
+    "city": "Chennai",
+    "state": "Tamil Nadu",
+    "country": "India",
+    "provenance_tier": "authoritative",
+    "prediction_kind": "authoritative_context",
+    "run_id": "chennai_authoritative_context_v1"
+  },
+  "sources": [
+    {
+      "layer_type": "planning_context",
+      "source_name": "chennai_nrsc_water_context",
+      "source_authority": "NRSC/ISRO",
+      "source_family": "nrsc_isro",
+      "path": "India/data/processing/raw/authoritative/chennai_nrsc_water_context.geojson",
+      "task": "blue_green_network_protection",
+      "field_map": {
+        "Label": "water_class",
+        "Value": "water_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "planning_context",
+      "source_name": "chennai_survey_wetland_protection",
+      "source_authority": "Survey of India",
+      "source_family": "survey_of_india",
+      "path": "India/data/processing/raw/authoritative/chennai_survey_wetland_protection.geojson",
+      "task": "wetland_edge_encroachment",
+      "field_map": {
+        "Label": "wetland_class",
+        "Value": "wetland_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "planning_context",
+      "source_name": "chennai_iudx_transit_access",
+      "source_authority": "IUDX",
+      "source_family": "iudx",
+      "path": "India/data/processing/raw/authoritative/chennai_iudx_transit_access.geojson",
+      "task": "transit_oriented_growth",
+      "field_map": {
+        "Label": "station_type",
+        "Value": "station_name",
+        "Scenario": "scenario"
+      }
+    },
+    {
+      "layer_type": "urban_planning",
+      "source_name": "chennai_municipal_flood_context",
+      "source_authority": "Greater Chennai Corporation",
+      "source_family": "municipal_gis",
+      "path": "India/data/processing/raw/authoritative/chennai_municipal_flood_context.geojson",
+      "task": "floodplain_lock_in",
+      "field_map": {
+        "Label": "risk_class",
+        "DepthM": "depth_m",
+        "Probability": "probability",
+        "Scenario": "scenario"
+      }
+    }
+  ]
+}

@@ -35,12 +35,17 @@ def sample_layers() -> gpd.GeoDataFrame:
             "Country": ["India"] * len(scenarios),
             "SourceName": ["growth"] * len(scenarios),
             "SourceAuthority": ["derived"] * len(scenarios),
+            "SourceFamily": ["heuristic_proxy"] * len(chennai_scenarios)
+            + ["model_export"],
+            "ProvenanceTier": ["heuristic"] * len(chennai_scenarios) + ["model"],
             "Scenario": scenarios,
             "Label": ["baseline"] * len(scenarios),
             "Score": [0.1, 0.3, 0.4, 0.6, 0.8, 0.9, 0.7],
             "Value": [None] * len(scenarios),
-            "ModelFamily": [None] * len(scenarios),
-            "ModelName": [None] * len(scenarios),
+            "PredictionKind": ["heuristic_baseline"] * len(chennai_scenarios)
+            + ["model_prediction"],
+            "ModelFamily": [None] * len(chennai_scenarios) + ["SegFormer"],
+            "ModelName": [None] * len(chennai_scenarios) + ["segformer-v1"],
             "ModelVersion": [None] * len(scenarios),
             "Task": [None] * len(scenarios),
             "RunID": ["run"] * len(scenarios),
@@ -93,10 +98,11 @@ class BaselineEvaluationTests(unittest.TestCase):
         )
 
         self.assertEqual(report["prediction_method"], "heuristic_baseline")
-        self.assertFalse(report["model_outputs_loaded"])
+        self.assertTrue(report["model_outputs_loaded"])
         self.assertEqual(report["total_layer_rows"], 7)
         self.assertEqual(report["total_link_rows"], 3)
         self.assertAlmostEqual(report["link_rate"], 1.0)
+        self.assertEqual(report["rows_by_prediction_kind"]["model_prediction"], 1)
 
         city_rows = {item["city"]: item for item in report["city_comparison"]}
         self.assertEqual(city_rows["Chennai"]["layer_rows"], 6)

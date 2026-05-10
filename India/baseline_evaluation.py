@@ -8,6 +8,7 @@ from typing import Any
 
 import geopandas as gpd
 import pandas as pd
+from processing_semantics import infer_prediction_kind
 
 
 MODULE_DIR = Path(__file__).resolve().parent
@@ -66,6 +67,27 @@ def _value_counts(frame: pd.DataFrame, column: str) -> dict[str, int]:
     }
 
 
+def prediction_kind_series(frame: pd.DataFrame) -> pd.Series:
+    if frame.empty:
+        return pd.Series(dtype="string")
+    if "PredictionKind" in frame.columns:
+        return frame["PredictionKind"].astype("string").fillna("heuristic_baseline")
+    return pd.Series(
+        [
+            infer_prediction_kind(
+                explicit_kind=None,
+                source_family=frame.iloc[i]["SourceFamily"] if "SourceFamily" in frame.columns else None,
+                model_family=frame.iloc[i]["ModelFamily"] if "ModelFamily" in frame.columns else None,
+                model_name=frame.iloc[i]["ModelName"] if "ModelName" in frame.columns else None,
+                label=frame.iloc[i]["SourceName"] if "SourceName" in frame.columns else None,
+            )
+            for i in range(len(frame))
+        ],
+        index=frame.index,
+        dtype="string",
+    )
+
+
 def _score_distribution(frame: pd.DataFrame) -> dict[str, float | int | None]:
     if frame.empty or "Score" not in frame.columns:
         return {
@@ -115,13 +137,8 @@ def _non_empty_unique(frame: pd.DataFrame, column: str) -> list[str]:
 
 
 def model_outputs_loaded(layers: pd.DataFrame) -> bool:
-    model_values = _non_empty_unique(layers, "ModelFamily") + _non_empty_unique(
-        layers, "ModelName"
-    )
-    return any(
-        "heuristic" not in value.lower() and "baseline" not in value.lower()
-        for value in model_values
-    )
+    kinds = set(prediction_kind_series(layers).dropna().astype("string").tolist())
+    return "model_prediction" in kinds
 
 
 def scenario_suffix(scenario: object) -> str | None:
@@ -308,6 +325,12 @@ def build_baseline_evaluation_report(
         "rows_by_city": _value_counts(layers, "City"),
         "rows_by_layer_type": _value_counts(layers, "LayerType"),
         "rows_by_source_name": _value_counts(layers, "SourceName"),
+        "rows_by_source_family": _value_counts(layers, "SourceFamily"),
+        "rows_by_provenance_tier": _value_counts(layers, "ProvenanceTier"),
+        "rows_by_prediction_kind": {
+            str(key): int(value)
+            for key, value in prediction_kind_series(layers).value_counts(dropna=False).items()
+        },
         "rows_by_scenario": _value_counts(layers, "Scenario"),
         "score_distribution": _score_distribution(layers),
         "city_comparison": city_comparison(layers, links, structures),

@@ -28,6 +28,12 @@ from pipeline_utils import (
     source_failure as shared_source_failure,
     write_metadata_sidecar as shared_write_metadata_sidecar,
 )
+from processing_semantics import (
+    default_provenance_tier,
+    infer_prediction_kind,
+    normalize_provenance_tier,
+    normalize_source_family,
+)
 
 
 PROCESSING_LAYER_TYPES = {
@@ -47,6 +53,9 @@ PROCESSING_LAYER_COLUMNS = [
     "Country",
     "SourceName",
     "SourceAuthority",
+    "SourceFamily",
+    "ProvenanceTier",
+    "PredictionKind",
     "SourcePath",
     "ModelFamily",
     "ModelName",
@@ -75,6 +84,9 @@ PROCESSING_LINK_COLUMNS = [
     "Country",
     "SourceName",
     "SourceAuthority",
+    "SourceFamily",
+    "ProvenanceTier",
+    "PredictionKind",
     "ModelFamily",
     "ModelName",
     "ModelVersion",
@@ -322,6 +334,29 @@ def standardize_processing_layer(
     run_timestamp = scalar_source_value(
         source, "run_timestamp", default=datetime.now(timezone.utc).isoformat()
     )
+    model_family = scalar_source_value(source, "model_family")
+    model_name = scalar_source_value(source, "model_name", "model_id", "model")
+    source_family = normalize_source_family(
+        scalar_source_value(
+            source,
+            "source_family",
+            default="model_export" if model_family or model_name else "heuristic_proxy",
+        )
+    )
+    prediction_kind = infer_prediction_kind(
+        explicit_kind=scalar_source_value(source, "prediction_kind"),
+        source_family=source_family,
+        model_family=model_family,
+        model_name=model_name,
+        label=source_name,
+    )
+    provenance_tier = normalize_provenance_tier(
+        scalar_source_value(
+            source,
+            "provenance_tier",
+            default=default_provenance_tier(prediction_kind=prediction_kind),
+        )
+    )
 
     raw = clean_geometry(raw.to_crs(epsg=4326)).reset_index(drop=True)
     out = gpd.GeoDataFrame(index=raw.index, geometry=raw.geometry, crs="EPSG:4326")
@@ -335,9 +370,12 @@ def standardize_processing_layer(
     out["Country"] = scalar_source_value(source, "country", default=config.country)
     out["SourceName"] = source_name
     out["SourceAuthority"] = scalar_source_value(source, "source_authority", "authority")
+    out["SourceFamily"] = source_family
+    out["ProvenanceTier"] = provenance_tier
+    out["PredictionKind"] = prediction_kind
     out["SourcePath"] = source_path
-    out["ModelFamily"] = scalar_source_value(source, "model_family")
-    out["ModelName"] = scalar_source_value(source, "model_name", "model_id", "model")
+    out["ModelFamily"] = model_family
+    out["ModelName"] = model_name
     out["ModelVersion"] = scalar_source_value(source, "model_version", "version")
     out["Task"] = scalar_source_value(source, "task", default=layer_type)
     out["RunID"] = run_id
@@ -540,6 +578,11 @@ def write_processing_outputs(
 def build_processing_metrics(
     layers: gpd.GeoDataFrame, links: pd.DataFrame, structures: gpd.GeoDataFrame
 ) -> dict:
+    def counts(frame: pd.DataFrame, column: str) -> dict:
+        if frame.empty or column not in frame.columns:
+            return {}
+        return frame[column].value_counts(dropna=False).to_dict()
+
     total_structures = int(len(structures))
     unique_linked_structures = int(links["StructureID"].nunique()) if not links.empty else 0
     link_rate = (
@@ -576,12 +619,11 @@ def build_processing_metrics(
     return {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "total_layer_rows": int(len(layers)),
-        "rows_by_source_name": layers["SourceName"].value_counts(dropna=False).to_dict()
-        if not layers.empty
-        else {},
-        "rows_by_layer_type": layers["LayerType"].value_counts(dropna=False).to_dict()
-        if not layers.empty
-        else {},
+        "rows_by_source_name": counts(layers, "SourceName"),
+        "rows_by_source_family": counts(layers, "SourceFamily"),
+        "rows_by_provenance_tier": counts(layers, "ProvenanceTier"),
+        "rows_by_prediction_kind": counts(layers, "PredictionKind"),
+        "rows_by_layer_type": counts(layers, "LayerType"),
         "rows_by_scenario": {str(k): int(v) for k, v in scenario_layer_counts.items()},
         "total_links": int(len(links)),
         "unique_linked_structures": unique_linked_structures,
@@ -632,10 +674,28 @@ def run_processing_pipeline(
 
 def read_source_config(path: Path) -> list[dict]:
     payload = json.loads(path.read_text())
-    sources = payload.get("sources", payload) if isinstance(payload, dict) else payload
+    defaults = {}
+    if isinstance(payload, dict):
+        defaults = payload.get("defaults", {}) or {}
+        if not isinstance(defaults, dict):
+            raise ValueError("'defaults' must be a JSON object when provided")
+        sources = payload.get("sources", payload)
+    else:
+        sources = payload
     if not isinstance(sources, list):
         raise ValueError("source config must be a list or an object with a 'sources' list")
-    return sources
+    merged_sources = []
+    for source in sources:
+        if not isinstance(source, dict):
+            raise ValueError("Each source entry must be a JSON object")
+        merged = dict(defaults)
+        merged.update(source)
+        default_field_map = defaults.get("field_map", {}) if isinstance(defaults.get("field_map"), dict) else {}
+        source_field_map = source.get("field_map", {}) if isinstance(source.get("field_map"), dict) else {}
+        if default_field_map or source_field_map:
+            merged["field_map"] = dict(default_field_map) | dict(source_field_map)
+        merged_sources.append(merged)
+    return merged_sources
 
 
 def main() -> None:

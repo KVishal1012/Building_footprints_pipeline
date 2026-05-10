@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "name": "chennai_authoritative_water",
+  "crs": { "type": "name", "properties": { "name": "EPSG:4326" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "water_class": "canal_buffer",
+        "water_name": "Buckingham Canal Context",
+        "scenario": "chennai_tamil_nadu_india_blue_green_network_protection_realworld_v1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[80.2000, 13.0000], [80.2010, 13.0000], [80.2010, 13.0010], [80.2000, 13.0010], [80.2000, 13.0000]]]
+      }
+    }
+  ]
+}

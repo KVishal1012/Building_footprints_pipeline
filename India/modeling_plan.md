@@ -8,6 +8,12 @@ Deep-learning and planning work now belongs in `processing_pipeline.py`, not in 
 
 Use `processing_sources.example.json` as the source-spec template. Raw model outputs should be stored under `data/processing/raw/`, and normalized outputs are written under `data/processing/output/`.
 
+The processing source spec now distinguishes:
+
+- authoritative GIS context layers through `source_family` values such as `nrsc_isro`, `survey_of_india`, `iudx`, and `municipal_gis`
+- heuristic fallback layers through `source_family = heuristic_proxy`
+- first-class model exports through `source_family = model_export` with `prediction_kind = model_prediction`
+
 ## Chennai-First Future Tracks
 
 ### 1. SegFormer / U-Net Segmentation
@@ -127,6 +133,13 @@ Scenario source specs for real datasets are templated in:
 India/scenario_sources.example.json
 ```
 
+Authoritative context source-spec templates:
+
+```text
+India/authoritative_sources_chennai.example.json
+India/authoritative_sources_bengaluru.example.json
+```
+
 Bengaluru template configs:
 
 ```text
@@ -147,3 +160,9 @@ Baseline evaluation command for current heuristic scenario outputs:
 ```
 
 Use `--structures-path` only when the structures parquet covers the same city set as the layer/link outputs; otherwise link-rate denominators are intentionally reported as `null`.
+
+Production verification command for multi-city release gating:
+
+```bash
+.venv/bin/python India/production_verification.py --config India/production_verification.example.json
+```

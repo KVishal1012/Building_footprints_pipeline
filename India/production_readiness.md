@@ -31,6 +31,17 @@ Processing outputs:
 
 Use `India/processing_sources.example.json` as the source-spec template for exported model layers. Keep model outputs in `data/processing/raw/`, not in the structure pipeline.
 
+Processing source specs now support stable provenance fields:
+
+- `source_family`: for example `nrsc_isro`, `survey_of_india`, `iudx`, `municipal_gis`, `heuristic_proxy`, or `model_export`
+- `provenance_tier`: `authoritative`, `model`, `heuristic`, or `reference`
+- `prediction_kind`: `authoritative_context`, `model_prediction`, `heuristic_baseline`, or `reference`
+
+Use the authoritative example source specs to onboard the first real planning layers:
+
+- `India/authoritative_sources_chennai.example.json`
+- `India/authoritative_sources_bengaluru.example.json`
+
 ## Source Layer Rules
 
 Use `source_registry.json` as the source inventory. The structure pipeline itself only attaches structure-related data:
@@ -86,6 +97,19 @@ Production-style wrapper commands from the repo root:
 ```bash
 .venv/bin/python scripts/run_india_pipeline.py --config India/pipeline_config.example.json
 .venv/bin/python scripts/run_india_processing.py --config India/processing_pipeline_config.example.json
+```
+
+Authoritative dry-run examples:
+
+```bash
+.venv/bin/python scripts/run_india_processing.py --config India/authoritative_processing_chennai.example.json --dry-run
+.venv/bin/python scripts/run_india_processing.py --config India/authoritative_processing_bengaluru.example.json --dry-run
+```
+
+Production verification command:
+
+```bash
+.venv/bin/python India/production_verification.py --config India/production_verification.example.json
 ```
 
 Add `--dry-run` to validate config, logging, paths, and dataclass fields without running the pipeline.

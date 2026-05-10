@@ -1,0 +1,21 @@
+{
+  "logging": {
+    "level": "INFO"
+  },
+  "source_config": "India/authoritative_sources_bengaluru.example.json",
+  "config": {
+    "data_dir": "India/data",
+    "structure_path": "India/data/output/structures_master.parquet",
+    "output_dir": "India/data/processing/output",
+    "raw_dir": "India/data/processing/raw",
+    "country": "India",
+    "strict_sources": false,
+    "write_run_metadata": true,
+    "min_intersection_area_m2": 1.0,
+    "enforce_crs": true,
+    "enforce_geometry_non_empty": true,
+    "enforce_field_map_columns": true,
+    "max_null_scenario_rate": 0.05,
+    "metrics_output_path": "India/data/processing/output/processing_metrics.json"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "name": "bengaluru_authoritative_transit",
+  "crs": { "type": "name", "properties": { "name": "EPSG:4326" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "station_type": "metro_station",
+        "station_name": "Majestic Interchange",
+        "scenario": "bengaluru_karnataka_india_transit_oriented_growth_realworld_v1"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [77.5940, 12.9785]
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "name": "bengaluru_flood_prediction",
+  "crs": { "type": "name", "properties": { "name": "EPSG:4326" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "risk": "high",
+        "probability": 0.82,
+        "depth_m": 0.6,
+        "horizon_hr": 24,
+        "scenario": "bengaluru_karnataka_india_floodplain_lock_in_realworld_v1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[77.5937, 12.9782], [77.5943, 12.9782], [77.5943, 12.9788], [77.5937, 12.9788], [77.5937, 12.9782]]]
+      }
+    }
+  ]
+}

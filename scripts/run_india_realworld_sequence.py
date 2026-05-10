@@ -26,6 +26,10 @@ from processing_pipeline import (  # noqa: E402
     read_source_config,
     run_processing_pipeline,
 )
+from production_verification import (  # noqa: E402
+    VerificationConfig,
+    verify_outputs,
+)
 
 
 LOGGER = logging.getLogger("india_realworld_sequence")
@@ -65,6 +69,12 @@ def main() -> None:
     parser.add_argument("--skip-osm-first", action="store_true", help="Skip OSM-first structure run.")
     parser.add_argument("--skip-full-sources", action="store_true", help="Skip full-source structure run.")
     parser.add_argument("--skip-scenarios", action="store_true", help="Skip scenario processing run.")
+    parser.add_argument(
+        "--verification-config",
+        default=None,
+        type=Path,
+        help="Optional JSON verification config to run after scenario processing.",
+    )
     args = parser.parse_args()
 
     payload = load_json_object(args.config)
@@ -81,6 +91,11 @@ def main() -> None:
     )
     scenario_source_config_path = resolve_config_path(
         scenario_source_config_value, REPO_ROOT
+    )
+    verification_config_path = (
+        resolve_config_path(args.verification_config, REPO_ROOT)
+        if args.verification_config is not None
+        else None
     )
 
     structure_base_kwargs = dataclass_config_kwargs(
@@ -127,6 +142,9 @@ def main() -> None:
     if args.dry_run:
         LOGGER.info("Validated sequence config for %d place(s)", len(places))
         LOGGER.info("Scenario source config path: %s", scenario_source_config_path)
+        if verification_config_path is not None:
+            VerificationConfig.from_json(verification_config_path)
+            LOGGER.info("Verification config path: %s", verification_config_path)
         return
 
     if not args.skip_osm_first:
@@ -139,6 +157,14 @@ def main() -> None:
         LOGGER.info("Step 3/3: running scenario processing pipeline")
         sources = read_source_config(scenario_source_config_path)
         run_processing_pipeline(sources, processing_config)
+    if verification_config_path is not None:
+        LOGGER.info("Running production verification with %s", verification_config_path)
+        report = verify_outputs(VerificationConfig.from_json(verification_config_path))
+        if not report["passed"]:
+            raise RuntimeError(
+                "Production verification failed: "
+                + "; ".join(report["errors"])
+            )
 
     LOGGER.info("India real-world sequence completed")
 

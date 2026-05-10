@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "name": "chennai_segmentation",
+  "crs": { "type": "name", "properties": { "name": "EPSG:4326" } },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "class": "built_up",
+        "confidence": 0.94,
+        "scenario": "chennai_tamil_nadu_india_compound_risk_growth_hotspots_realworld_v1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[80.2002, 13.0002], [80.2008, 13.0002], [80.2008, 13.0008], [80.2002, 13.0008], [80.2002, 13.0002]]]
+      }
+    }
+  ]
+}

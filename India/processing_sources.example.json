@@ -1,4 +1,10 @@
 {
+  "defaults": {
+    "country": "India",
+    "source_family": "model_export",
+    "provenance_tier": "model",
+    "prediction_kind": "model_prediction"
+  },
   "sources": [
     {
       "layer_type": "segmentation",
@@ -25,6 +31,8 @@
       "path": "data/processing/raw/chennai_change_detection.geojson",
       "model_family": "change_detection",
       "model_name": "your-org/change-detection-model",
+      "model_version": "v1",
+      "prediction_kind": "model_prediction",
       "run_id": "chennai_change_2023_2026_001",
       "field_map": {
         "Label": "change_type",
@@ -41,6 +49,7 @@
       "path": "data/processing/raw/chennai_flood_24h.geojson",
       "model_family": "ConvLSTM",
       "model_name": "your-org/convlstm-flood-chennai",
+      "model_version": "v1",
       "run_id": "chennai_flood_24h_001",
       "field_map": {
         "Label": "risk",
@@ -58,6 +67,7 @@
       "path": "data/processing/raw/chennai_planning_suitability.geojson",
       "model_family": "planning_model",
       "model_name": "your-org/urban-planning-model",
+      "model_version": "v1",
       "run_id": "chennai_planning_001",
       "field_map": {
         "Label": "planning_label",

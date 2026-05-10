@@ -31,6 +31,13 @@ def sample_layers() -> gpd.GeoDataFrame:
             "City": ["Chennai", "Chennai", "Bengaluru"],
             "SourceName": ["transit", "heat", "flood"],
             "Scenario": ["s1", "s2", "s2"],
+            "SourceFamily": ["municipal_gis", "heuristic_proxy", "model_export"],
+            "ProvenanceTier": ["authoritative", "heuristic", "model"],
+            "PredictionKind": [
+                "authoritative_context",
+                "heuristic_baseline",
+                "model_prediction",
+            ],
             "ModelFamily": [None, None, None],
             "ModelName": [None, None, None],
             "RunTimestamp": [
@@ -113,18 +120,18 @@ class UrbanGrowthDashboardModeTests(unittest.TestCase):
         self.assertEqual(chennai["sources"], 2)
 
     def test_prediction_method_status_defaults_to_heuristic_baseline(self):
-        status = prediction_method_status(sample_layers())
+        layers = sample_layers().iloc[[1]].copy()
+        status = prediction_method_status(layers)
         self.assertEqual(status["active_label"], "Heuristic baseline")
         self.assertFalse(status["is_model_loaded"])
         self.assertIn("not deep-learning predictions", status["active_detail"])
 
     def test_prediction_method_status_detects_model_outputs(self):
         layers = sample_layers()
-        layers.loc[0, "ModelFamily"] = "deep_learning"
-        layers.loc[0, "ModelName"] = "segformer_v1"
         status = prediction_method_status(layers)
         self.assertEqual(status["active_label"], "Model prediction")
         self.assertTrue(status["is_model_loaded"])
+        self.assertTrue(status["authoritative_loaded"])
 
     def test_latest_run_timestamp_formats_utc(self):
         self.assertEqual(latest_run_timestamp(sample_layers()), "2026-04-26 12:00 UTC")

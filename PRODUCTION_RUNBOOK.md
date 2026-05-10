@@ -20,6 +20,25 @@ Run commands should be launched from the repo root.
 .venv/bin/python scripts/run_india_processing.py --config India/processing_pipeline_config.example.json
 ```
 
+## India Authoritative Context Examples
+
+```bash
+.venv/bin/python scripts/run_india_processing.py --config India/authoritative_processing_chennai.example.json --dry-run
+.venv/bin/python scripts/run_india_processing.py --config India/authoritative_processing_bengaluru.example.json --dry-run
+```
+
+## India Sequence With Verification
+
+```bash
+.venv/bin/python scripts/run_india_realworld_sequence.py --config India/realworld_sequence_config.example.json --verification-config India/production_verification.example.json
+```
+
+Or run verification separately after the sequence:
+
+```bash
+.venv/bin/python India/production_verification.py --config India/production_verification.example.json
+```
+
 ## Config Shape
 
 - `logging.level`: Python logging level such as `INFO` or `DEBUG`.

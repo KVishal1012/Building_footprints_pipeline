@@ -7,6 +7,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 import streamlit as st
+from processing_semantics import infer_prediction_kind
 
 
 MODULE_DIR = Path(__file__).resolve().parent
@@ -369,35 +370,56 @@ def latest_run_timestamp(layers: pd.DataFrame | pd.Series) -> str:
     return format_timestamp(timestamps.max())
 
 
+def prediction_kind_series(layers: pd.DataFrame) -> pd.Series:
+    if layers.empty:
+        return pd.Series(dtype="string")
+    if "PredictionKind" in layers.columns:
+        return layers["PredictionKind"].astype("string").fillna("heuristic_baseline")
+    return pd.Series(
+        [
+            infer_prediction_kind(
+                explicit_kind=None,
+                source_family=layers.iloc[i]["SourceFamily"] if "SourceFamily" in layers.columns else None,
+                model_family=layers.iloc[i]["ModelFamily"] if "ModelFamily" in layers.columns else None,
+                model_name=layers.iloc[i]["ModelName"] if "ModelName" in layers.columns else None,
+                label=layers.iloc[i]["SourceName"] if "SourceName" in layers.columns else None,
+            )
+            for i in range(len(layers))
+        ],
+        index=layers.index,
+        dtype="string",
+    )
+
+
 def prediction_method_status(layers: pd.DataFrame) -> dict[str, object]:
-    model_values = non_empty_unique(layers, "ModelFamily") + non_empty_unique(layers, "ModelName")
-    non_heuristic_models = [
-        value
-        for value in model_values
-        if "heuristic" not in value.lower() and "baseline" not in value.lower()
-    ]
-    model_loaded = bool(non_heuristic_models)
-    if model_loaded:
-        return {
-            "active_label": "Model prediction",
-            "active_status": "Loaded",
-            "active_detail": "Model prediction layers are present in the selected outputs.",
-            "future_label": "Heuristic baseline",
-            "future_status": "Reference",
-            "future_detail": "Baseline scenario indicators remain available for comparison.",
-            "is_model_loaded": True,
-        }
-    return {
-        "active_label": "Heuristic baseline",
-        "active_status": "Active",
-        "active_detail": (
+    kinds = set(prediction_kind_series(layers).dropna().astype("string").tolist())
+    heuristic_loaded = "heuristic_baseline" in kinds or not kinds
+    authoritative_loaded = "authoritative_context" in kinds
+    model_loaded = "model_prediction" in kinds
+    active_label = (
+        "Model prediction"
+        if model_loaded
+        else "Authoritative GIS context"
+        if authoritative_loaded
+        else "Heuristic baseline"
+    )
+    active_detail = (
+        "Model prediction layers are present in the selected outputs."
+        if model_loaded
+        else "Authoritative GIS context layers are present in the selected outputs."
+        if authoritative_loaded
+        else (
             "Scores are deterministic scenario indicators derived from OSM/context "
             "geometry and structure density. They are not deep-learning predictions."
-        ),
-        "future_label": "AI/deep-learning model",
-        "future_status": "Not loaded",
-        "future_detail": "A model output layer will appear here after prediction ingestion is added.",
-        "is_model_loaded": False,
+        )
+    )
+    return {
+        "active_label": active_label,
+        "active_status": "Loaded" if model_loaded or authoritative_loaded else "Active",
+        "active_detail": active_detail,
+        "heuristic_loaded": heuristic_loaded,
+        "authoritative_loaded": authoritative_loaded,
+        "is_model_loaded": model_loaded,
     }
 
 
@@ -592,22 +614,44 @@ def render_source_tiles(summary: pd.DataFrame, limit: int = 6) -> None:
 
 
 def render_prediction_method_panel(status: dict[str, object]) -> None:
+    cards = [
+        (
+            "Heuristic baseline",
+            "Available" if status["heuristic_loaded"] else "Not loaded",
+            "Deterministic scenario indicators and proxy layers for comparison and fallback.",
+            "active" if status["active_label"] == "Heuristic baseline" else "future",
+        ),
+        (
+            "Authoritative GIS context",
+            "Loaded" if status["authoritative_loaded"] else "Not loaded",
+            "Official or operational context layers such as NRSC, Survey of India, IUDX, or municipal GIS.",
+            "active" if status["active_label"] == "Authoritative GIS context" else "future",
+        ),
+        (
+            "Model prediction",
+            "Loaded" if status["is_model_loaded"] else "Not loaded",
+            "Segmentation, flood, or change model outputs normalized through the processing pipeline.",
+            "active" if status["active_label"] == "Model prediction" else "future",
+        ),
+    ]
+    cards_html = []
+    for title, badge, detail, tone in cards:
+        cards_html.append(
+            f"""
+            <div class="method-card {tone}">
+                <div class="method-status {'future' if tone == 'future' else ''}">{safe_text(badge)}</div>
+                <div class="method-title">{safe_text(title)}</div>
+                <div class="method-copy">{safe_text(detail)}</div>
+            </div>
+            """
+        )
     st.markdown(
         f"""
         <div class="panel">
             <div class="panel-title">Prediction Method</div>
-            <div class="panel-caption">Clarifies whether the selected outputs are baseline indicators or model predictions.</div>
+            <div class="panel-caption">Distinguishes heuristic baselines, authoritative GIS context, and model predictions in the selected outputs.</div>
             <div class="method-grid">
-                <div class="method-card active">
-                    <div class="method-status">{safe_text(status['active_status'])}</div>
-                    <div class="method-title">{safe_text(status['active_label'])}</div>
-                    <div class="method-copy">{safe_text(status['active_detail'])}</div>
-                </div>
-                <div class="method-card future">
-                    <div class="method-status future">{safe_text(status['future_status'])}</div>
-                    <div class="method-title">{safe_text(status['future_label'])}</div>
-                    <div class="method-copy">{safe_text(status['future_detail'])}</div>
-                </div>
+                {''.join(cards_html)}
             </div>
         </div>
         """,
@@ -684,7 +728,13 @@ def main() -> None:
     latest_timestamp = latest_run_timestamp(filtered_layers)
     linked_structures = filtered_links["StructureID"].nunique() if "StructureID" in filtered_links else 0
     active_method = str(prediction_status["active_label"])
-    loaded_mode = "Model output loaded" if prediction_status["is_model_loaded"] else "No AI model loaded"
+    loaded_mode = (
+        "Model output loaded"
+        if prediction_status["is_model_loaded"]
+        else "Authoritative context loaded"
+        if prediction_status["authoritative_loaded"]
+        else "No AI model loaded"
+    )
 
     st.markdown(
         f"""
@@ -693,7 +743,7 @@ def main() -> None:
                 <div>
                     <div class="eyebrow">Baseline Scenario Review</div>
                     <h1 class="title">Urban Scenario Review Dashboard</h1>
-                    <div class="subtitle">Real OSM context plus derived scenario indicators for structure-level planning review. Current outputs are heuristic baselines, not deep-learning predictions.</div>
+                    <div class="subtitle">Review structure-linked outputs across heuristic baselines, authoritative GIS context, and model predictions for urban planning analysis.</div>
                 </div>
                 <div class="status-row">
                     <span class="chip teal">{safe_text(selected_city)}</span>
@@ -708,11 +758,11 @@ def main() -> None:
     )
 
     if review_requested:
-        st.toast("Review filters applied to existing baseline outputs.")
+        st.toast("Review filters applied to existing processing outputs.")
 
     kpi1, kpi2, kpi3, kpi4, kpi5, kpi6 = st.columns(6)
     with kpi1:
-        render_metric_card("Layer Rows", format_number(len(filtered_layers)), "baseline indicator features")
+        render_metric_card("Layer Rows", format_number(len(filtered_layers)), "processing-layer features")
     with kpi2:
         render_metric_card("Linked Structures", format_number(linked_structures), "unique matched structures")
     with kpi3:
@@ -757,11 +807,11 @@ def main() -> None:
             f"""
             <div class="panel">
                 <div class="panel-title">{safe_text(display_mode)} Baseline Indicator Map</div>
-                <div class="panel-caption">Sampled high-score baseline outputs rendered as geographic review points. This is not a live model inference run.</div>
+                <div class="panel-caption">Sampled high-score processing outputs rendered as geographic review points. This is not a live model inference run.</div>
                 <div class="legend-row">
-                    <span class="legend-item"><span class="dot teal"></span>Planning context</span>
+                    <span class="legend-item"><span class="dot teal"></span>Authoritative context</span>
                     <span class="legend-item"><span class="dot amber"></span>Urban planning</span>
-                    <span class="legend-item"><span class="dot red"></span>Flood baseline</span>
+                    <span class="legend-item"><span class="dot red"></span>Flood / model layer</span>
                 </div>
             </div>
             """,

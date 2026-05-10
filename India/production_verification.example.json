@@ -1,0 +1,31 @@
+{
+  "structure_path": "India/data/output/structures_master.parquet",
+  "layers_path": "India/data/processing/output/processing_layers.parquet",
+  "links_path": "India/data/processing/output/structure_processing_links.parquet",
+  "metrics_path": "India/data/processing/output/processing_metrics.json",
+  "require_metadata_sidecars": true,
+  "cities": {
+    "Chennai": {
+      "min_link_rate": 0.0005,
+      "required_scenarios": [
+        "chennai_tamil_nadu_india_transit_oriented_growth_realworld_v1",
+        "chennai_tamil_nadu_india_blue_green_network_protection_realworld_v1",
+        "chennai_tamil_nadu_india_wetland_edge_encroachment_realworld_v1",
+        "chennai_tamil_nadu_india_floodplain_lock_in_realworld_v1"
+      ],
+      "min_authoritative_rows": 0,
+      "min_model_rows": 0
+    },
+    "Bengaluru": {
+      "min_link_rate": 0.0005,
+      "required_scenarios": [
+        "bengaluru_karnataka_india_transit_oriented_growth_realworld_v1",
+        "bengaluru_karnataka_india_blue_green_network_protection_realworld_v1",
+        "bengaluru_karnataka_india_wetland_edge_encroachment_realworld_v1",
+        "bengaluru_karnataka_india_floodplain_lock_in_realworld_v1"
+      ],
+      "min_authoritative_rows": 0,
+      "min_model_rows": 0
+    }
+  }
+}
