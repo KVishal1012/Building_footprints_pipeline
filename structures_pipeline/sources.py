@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import logging
 import math
 import re
@@ -15,6 +16,7 @@ import mercantile
 import numpy as np
 import pandas as pd
 import requests
+from shapely import wkb, wkt
 from shapely.geometry import box, shape
 
 from structures_pipeline.config import PipelineConfig
@@ -72,6 +74,121 @@ def resolve_overture_release(config: PipelineConfig) -> str | None:
 
 def _sql_quote(value: str | Path) -> str:
     return str(value).replace("'", "''")
+
+
+def _decode_sql_geometry(value):
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if isinstance(value, bytearray):
+        value = bytes(value)
+    if isinstance(value, bytes):
+        return wkb.loads(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return wkb.loads(bytes.fromhex(stripped))
+        except Exception:
+            return wkt.loads(stripped)
+    if hasattr(value, "wkb"):
+        return value
+    return value
+
+
+def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDataFrame:
+    try:
+        from sqlalchemy import create_engine, text
+    except ImportError as exc:
+        raise RuntimeError("sqlalchemy is required for SQL geometry sources") from exc
+
+    connection = source.get("connection")
+    connection_env = source.get("connection_env") or "STRUCTURES_SQL_URL"
+    if not connection:
+        connection = os.environ.get(connection_env)
+    if not connection:
+        raise RuntimeError(f"Missing SQL connection string. Set {connection_env} or pass connection in config.")
+
+    table = source.get("table")
+    query = source.get("query")
+    if table and query:
+        raise ValueError("SQL source can use table or query, not both")
+    if query:
+        sql = str(query)
+    elif table:
+        sql = f"SELECT * FROM {table}"
+        where = source.get("where")
+        if where:
+            sql = f"{sql} WHERE {where}"
+    else:
+        raise ValueError("SQL source requires table or query")
+
+    engine = create_engine(connection)
+    with engine.connect() as conn:
+        df = pd.read_sql_query(text(sql), conn)
+    geom_column = source.get("geom_column", "geom")
+    if geom_column not in df.columns:
+        raise ValueError(f"SQL source is missing geometry column: {geom_column}")
+    geometry = df.pop(geom_column).map(_decode_sql_geometry)
+    crs = source.get("crs", "EPSG:4326")
+    return gpd.GeoDataFrame(df, geometry=geometry, crs=crs)
+
+
+def standardize_sql_footprints(gdf: gpd.GeoDataFrame, place: pd.Series, source: dict) -> gpd.GeoDataFrame:
+    if gdf.empty:
+        return empty_gdf()
+    gdf = clean_geom(gdf.to_crs(epsg=4326)).reset_index(drop=True)
+    city_slug = slugify(place["City"], place["State"], "USA")
+    id_column = source.get("id_column")
+    if id_column and id_column in gdf.columns:
+        source_ids = gdf[id_column].astype(str)
+    else:
+        source_ids = pd.Series(gdf.index, index=gdf.index).astype(str)
+    source_name = source.get("source_name") or "sql"
+    structure_type_column = source.get("structure_type_column")
+    height_column = source.get("height_column")
+    stories_column = source.get("stories_column")
+    out = gpd.GeoDataFrame(
+        {
+            "StructureID": f"sql_{place['PlaceGEOID']}_{city_slug}_" + source_ids,
+            "FootprintSource": source_name,
+            "OvertureID": pd.Series(pd.NA, index=gdf.index, dtype="string"),
+            "MicrosoftID": pd.Series(pd.NA, index=gdf.index, dtype="string"),
+            "BuildingName_OVT": pd.Series(pd.NA, index=gdf.index),
+            "Height_OVT": pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "Stories_OVT": pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "OvertureSubtype": pd.Series(pd.NA, index=gdf.index),
+            "OvertureClass": pd.Series(pd.NA, index=gdf.index),
+            "SQLStructureType": gdf[structure_type_column] if structure_type_column in gdf.columns else pd.Series(pd.NA, index=gdf.index),
+            "SQLHeight": to_numeric_safe(gdf[height_column], index=gdf.index) if height_column in gdf.columns else pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "SQLStories": to_numeric_safe(gdf[stories_column], index=gdf.index) if stories_column in gdf.columns else pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "HasParts": pd.Series(pd.NA, index=gdf.index),
+            "Height_MS": pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "Confidence_MS": pd.Series(np.nan, index=gdf.index, dtype="float64"),
+        },
+        geometry=gdf.geometry,
+        crs="EPSG:4326",
+    )
+    return out.reset_index(drop=True)
+
+
+def load_sql_footprints(
+    place: pd.Series,
+    boundary: gpd.GeoDataFrame,
+    config: PipelineConfig,
+) -> gpd.GeoDataFrame:
+    source = config.sql_footprint_source
+    if not config.use_sql or not source:
+        return empty_gdf()
+    try:
+        raw = read_sql_geometry_source(source, config)
+    except Exception as exc:
+        LOGGER.warning("SQL footprint source skipped for %s: %s", place["PlaceGEOID"], exc)
+        return empty_gdf()
+    standardized = standardize_sql_footprints(raw, place, source)
+    return assign_footprints_to_place(standardized, boundary).reset_index(drop=True)
 
 
 def download_overture_with_duckdb(

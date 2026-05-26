@@ -38,6 +38,20 @@ python structure_pipeline.py \
   --parcel-source 1714000=/path/to/parcels.gpkg
 ```
 
+A SQL table or query with a geometry column can be used as a footprint source. Store the SQLAlchemy connection string in an environment variable so credentials stay out of command history:
+
+```bash
+export STRUCTURES_SQL_URL='postgresql+psycopg2://user:password@host:5432/dbname'
+python structure_pipeline.py \
+  --place "Chicago, Illinois" \
+  --sql-table public.building_footprints \
+  --sql-geom-column geom \
+  --sql-id-column building_id \
+  --sql-structure-type-column use_type
+```
+
+For databases that do not return geometry as WKB/WKT directly, pass a query that aliases the geometry to `geom`, for example `ST_AsBinary(geom) AS geom`.
+
 Use `--no-download` to force cached local files only. Use `--use-osm` only for small/debug runs because OSM enrichment calls Overpass through OSMnx.
 
 ## Outputs

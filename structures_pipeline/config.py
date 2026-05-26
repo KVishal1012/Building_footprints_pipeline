@@ -17,6 +17,7 @@ class PipelineConfig:
     overwrite_raw: bool = False
     use_overture: bool = True
     use_microsoft: bool = True
+    use_sql: bool = True
     use_osm: bool = False
     use_nsi: bool = True
     use_census: bool = True
@@ -28,6 +29,7 @@ class PipelineConfig:
     request_timeout_sec: int = 90
     parcel_overlap_ratio_threshold: float = 0.05
     cache_remote_parcels: bool = True
+    sql_footprint_source: dict | None = None
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -35,6 +37,7 @@ class PipelineConfig:
         self.output_dir = Path(self.output_dir)
         self.raw_dir = Path(self.raw_dir)
         self.cache_dir = Path(self.cache_dir)
+        self.sql_footprint_source = dict(self.sql_footprint_source or {})
         self.parcel_sources = dict(self.parcel_sources)
 
     @property

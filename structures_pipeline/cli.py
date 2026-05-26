@@ -18,6 +18,27 @@ def parse_parcel_source_arg(value: str) -> tuple[str, dict]:
     return key.strip(), source
 
 
+
+
+def parse_sql_source_args(args: argparse.Namespace) -> dict | None:
+    if not args.sql_table and not args.sql_query:
+        return None
+    if args.sql_table and args.sql_query:
+        raise argparse.ArgumentTypeError("Use either --sql-table or --sql-query, not both.")
+    return {
+        "connection_env": args.sql_connection_env,
+        "table": args.sql_table,
+        "query": args.sql_query,
+        "geom_column": args.sql_geom_column,
+        "id_column": args.sql_id_column,
+        "structure_type_column": args.sql_structure_type_column,
+        "height_column": args.sql_height_column,
+        "stories_column": args.sql_stories_column,
+        "where": args.sql_where,
+        "crs": args.sql_crs,
+        "source_name": args.sql_source_name,
+    }
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build production US structure polygons.")
     target = parser.add_mutually_exclusive_group(required=True)
@@ -34,6 +55,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--overwrite-raw", action="store_true")
     parser.add_argument("--no-overture", action="store_true")
     parser.add_argument("--no-microsoft", action="store_true")
+    parser.add_argument("--no-sql", action="store_true")
+    parser.add_argument("--sql-connection-env", default="STRUCTURES_SQL_URL")
+    parser.add_argument("--sql-table", help="SQL table/view to read structure geometries from.")
+    parser.add_argument("--sql-query", help="SQL SELECT query to read structure geometries from.")
+    parser.add_argument("--sql-geom-column", default="geom", help="Geometry column returned by the SQL source.")
+    parser.add_argument("--sql-id-column", help="Stable ID column in the SQL source.")
+    parser.add_argument("--sql-structure-type-column", help="Optional structure type/use column in the SQL source.")
+    parser.add_argument("--sql-height-column", help="Optional height column in the SQL source.")
+    parser.add_argument("--sql-stories-column", help="Optional stories column in the SQL source.")
+    parser.add_argument("--sql-where", help="Optional WHERE clause used with --sql-table.")
+    parser.add_argument("--sql-crs", default="EPSG:4326", help="CRS for SQL geometries when the source does not provide one.")
+    parser.add_argument("--sql-source-name", default="sql", help="Label recorded in FootprintSource for SQL rows.")
     parser.add_argument("--use-osm", action="store_true")
     parser.add_argument("--no-nsi", action="store_true")
     parser.add_argument("--no-census", action="store_true")
@@ -56,6 +89,7 @@ def main(argv: list[str] | None = None) -> None:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    sql_source = parse_sql_source_args(args)
     config = PipelineConfig(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
@@ -67,10 +101,12 @@ def main(argv: list[str] | None = None) -> None:
         overwrite_raw=args.overwrite_raw,
         use_overture=not args.no_overture,
         use_microsoft=not args.no_microsoft,
+        use_sql=not args.no_sql,
         use_osm=args.use_osm,
         use_nsi=not args.no_nsi,
         use_census=not args.no_census,
         use_parcels=not args.no_parcels,
+        sql_footprint_source=sql_source,
         parcel_sources=dict(args.parcel_source),
     )
     result = run_pipeline(

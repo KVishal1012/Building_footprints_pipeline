@@ -73,14 +73,17 @@ def finalize_attributes(
             "NSI_OccType",
             "NSI_DamageCategory",
             "ParcelLandUse",
+            "SQLStructureType",
             "Units_OSM",
             "NSI_ResUnits",
             "Stories_OSM",
             "Stories_OVT",
             "NSI_NumStory",
+            "SQLStories",
             "Height_OSM",
             "Height_OVT",
             "Height_MS",
+            "SQLHeight",
             "NSI_Pop2AM",
             "NSI_Pop2PM",
             "NSI_EmpNum",
@@ -97,6 +100,7 @@ def finalize_attributes(
             ("NSI_OccType", "nsi_occtype"),
             ("NSI_DamageCategory", "nsi_damage_category"),
             ("ParcelLandUse", "parcel_land_use"),
+            ("SQLStructureType", "sql_structure_type"),
         ],
     )
     out["StructureType"] = normalize_structure_type(out["StructureTypeRaw"])
@@ -109,12 +113,13 @@ def finalize_attributes(
             "nsi_occtype": 0.72,
             "nsi_damage_category": 0.68,
             "parcel_land_use": 0.62,
+            "sql_structure_type": 0.70,
         },
     )
 
     height, height_source = combine_first_with_source(
         out,
-        [("Height_OSM", "osm"), ("Height_OVT", "overture"), ("Height_MS", "microsoft")],
+        [("Height_OSM", "osm"), ("Height_OVT", "overture"), ("Height_MS", "microsoft"), ("SQLHeight", "sql")],
     )
     out["HeightM"] = to_numeric_safe(height, index=out.index)
     out["HeightSource"] = height_source
@@ -127,13 +132,14 @@ def finalize_attributes(
             ("Stories_OSM", "osm"),
             ("Stories_OVT", "overture"),
             ("NSI_NumStory", "nsi"),
+            ("SQLStories", "sql"),
             ("Stories_EstFromHeight", "height_estimate"),
         ],
     )
     out["NumStories"] = to_numeric_safe(out["NumStories"], index=out.index)
     out["NumStoriesConfidence"] = confidence_for_source(
         out["NumStoriesSource"],
-        {"osm": 0.90, "overture": 0.86, "nsi": 0.78, "height_estimate": 0.55},
+        {"osm": 0.90, "overture": 0.86, "nsi": 0.78, "sql": 0.74, "height_estimate": 0.55},
     )
 
     out["NumUnits"], out["NumUnitsSource"] = combine_first_with_source(

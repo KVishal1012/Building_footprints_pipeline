@@ -20,6 +20,7 @@ from structures_pipeline.sources import (
     load_and_attach_parcels,
     load_microsoft_fallback,
     load_overture_buildings,
+    load_sql_footprints,
     resolve_overture_release,
 )
 from structures_pipeline.utils import json_safe, utc_now_iso
@@ -54,15 +55,25 @@ def build_place_structures(
     boundary = normalize_boundary(boundary_for_place(place))
     LOGGER.info("Building structures for %s, %s", place["City"], place["State"])
 
+    sql_footprints = load_sql_footprints(place, boundary, config)
     overture = load_overture_buildings(place, boundary, config, overture_release)
-    microsoft = load_microsoft_fallback(place, boundary, config, overture)
-    if overture.empty:
+    primary_pieces = [frame for frame in [sql_footprints, overture] if not frame.empty]
+    if primary_pieces:
+        primary = gpd.GeoDataFrame(
+            pd.concat(primary_pieces, ignore_index=True),
+            geometry="geometry",
+            crs="EPSG:4326",
+        )
+    else:
+        primary = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+    microsoft = load_microsoft_fallback(place, boundary, config, primary)
+    if primary.empty:
         base = microsoft
     elif microsoft.empty:
-        base = overture
+        base = primary
     else:
         base = gpd.GeoDataFrame(
-            pd.concat([overture, microsoft], ignore_index=True),
+            pd.concat([primary, microsoft], ignore_index=True),
             geometry="geometry",
             crs="EPSG:4326",
         )
