@@ -8,6 +8,7 @@ from structures_pipeline.pipeline import parse_place_arg, run_pipeline
 
 
 def parse_parcel_source_arg(value: str) -> tuple[str, dict]:
+    """Parse one place-keyed parcel source CLI argument into config form."""
     if "=" not in value:
         raise argparse.ArgumentTypeError(
             "Use place_geoid_or_slug=path_or_url, for example 1714000=data/parcels.gpkg"
@@ -16,11 +17,8 @@ def parse_parcel_source_arg(value: str) -> tuple[str, dict]:
     source_value = source_value.strip()
     source = {"url": source_value} if source_value.lower().startswith("http") else {"path": source_value}
     return key.strip(), source
-
-
-
-
 def parse_sql_source_args(args: argparse.Namespace) -> dict | None:
+    """Convert SQL footprint CLI arguments into an optional source dictionary."""
     if not args.sql_table and not args.sql_query:
         return None
     if args.sql_table and args.sql_query:
@@ -41,6 +39,7 @@ def parse_sql_source_args(args: argparse.Namespace) -> dict | None:
 
 
 def parse_sql_baseline_args(args: argparse.Namespace) -> dict | None:
+    """Convert SQL baseline CLI arguments into an optional baseline dictionary."""
     if not args.baseline_sql_table and not args.baseline_sql_query:
         return None
     if args.baseline_sql_table and args.baseline_sql_query:
@@ -59,7 +58,9 @@ def parse_sql_baseline_args(args: argparse.Namespace) -> dict | None:
         "sqlserver_geometry_methods": args.baseline_sqlserver_geometry_methods,
     }
 
+
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for production and debug pipeline runs."""
     parser = argparse.ArgumentParser(description="Build production US structure polygons.")
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--place", action="append", type=parse_place_arg, help="City and state as 'City, State'.")
@@ -116,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Parse CLI arguments, construct PipelineConfig, and run the selected targets."""
     parser = build_parser()
     args = parser.parse_args(argv)
     logging.basicConfig(

@@ -12,10 +12,12 @@ from structures_pipeline.constants import SQM_TO_SQFT
 
 
 def empty_gdf(columns: Iterable[str] = (), crs: str = "EPSG:4326") -> gpd.GeoDataFrame:
+    """Create an empty GeoDataFrame with a known geometry column and CRS."""
     return gpd.GeoDataFrame({column: [] for column in columns}, geometry=[], crs=crs)
 
 
 def polygonal_part(geometry):
+    """Extract polygonal geometry from mixed/collection inputs and drop lines/points."""
     if geometry is None or geometry.is_empty:
         return None
     if geometry.geom_type in {"Polygon", "MultiPolygon"}:
@@ -37,6 +39,7 @@ def polygonal_part(geometry):
 
 
 def clean_geom(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Remove empty/invalid geometries and keep only valid polygons or multipolygons."""
     if gdf.empty:
         return gdf
     if gdf.crs is None:
@@ -61,6 +64,7 @@ def clean_geom(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def normalize_boundary(boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Return a single clean EPSG:4326 boundary polygon for source clipping."""
     if boundary.empty:
         return empty_gdf()
     if boundary.crs is None:
@@ -79,11 +83,13 @@ def normalize_boundary(boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def bounds_tuple(gdf: gpd.GeoDataFrame) -> tuple[float, float, float, float]:
+    """Return total bounds as plain floats for APIs that reject numpy scalars."""
     minx, miny, maxx, maxy = gdf.total_bounds
     return float(minx), float(miny), float(maxx), float(maxy)
 
 
 def estimated_projected_crs(*gdfs: gpd.GeoDataFrame):
+    """Pick a local projected CRS from available data, falling back to CONUS Albers."""
     for gdf in gdfs:
         if gdf is not None and not gdf.empty:
             crs = gdf.estimate_utm_crs()
@@ -93,6 +99,7 @@ def estimated_projected_crs(*gdfs: gpd.GeoDataFrame):
 
 
 def add_area_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Add footprint area in square meters and square feet using a projected CRS."""
     out = gdf.copy()
     if out.empty:
         out["FootprintArea_m2"] = pd.Series(dtype="float64")
@@ -152,6 +159,7 @@ def dedupe_fallback_footprints(
     fallback: gpd.GeoDataFrame,
     overlap_ratio_threshold: float,
 ) -> gpd.GeoDataFrame:
+    """Remove fallback footprints already covered by primary source footprints."""
     if fallback.empty or primary.empty:
         return fallback.reset_index(drop=True)
     primary = clean_geom(primary.to_crs(epsg=4326))
@@ -203,6 +211,7 @@ def dedupe_fallback_footprints(
 
 
 def clip_candidates_to_bbox(gdf: gpd.GeoDataFrame, boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Cheaply reduce candidate rows to the boundary bounding box before spatial ops."""
     if gdf.empty:
         return gdf
     minx, miny, maxx, maxy = bounds_tuple(boundary)
@@ -210,6 +219,7 @@ def clip_candidates_to_bbox(gdf: gpd.GeoDataFrame, boundary: gpd.GeoDataFrame) -
 
 
 def validate_geometry_or_empty(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Clean geometries, retrying with fixed precision when GEOS raises robustness errors."""
     try:
         return clean_geom(gdf)
     except GEOSException:

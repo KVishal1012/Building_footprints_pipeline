@@ -38,12 +38,13 @@ from structures_pipeline.geometry import (
     estimated_projected_crs,
     normalize_boundary,
 )
-from structures_pipeline.utils import parse_height_meters, slugify, to_numeric_safe
+from structures_pipeline.utils import ensure_columns, parse_height_meters, slugify, to_numeric_safe
 
 LOGGER = logging.getLogger(__name__)
 
 
 def read_wkb_parquet(path: Path, crs: str = "EPSG:4326") -> gpd.GeoDataFrame:
+    """Read GeoParquet, falling back to WKB decoding for plain parquet geometry."""
     try:
         gdf = gpd.read_parquet(path)
         if isinstance(gdf, gpd.GeoDataFrame) and gdf.geometry.name in gdf.columns:
@@ -59,6 +60,7 @@ def read_wkb_parquet(path: Path, crs: str = "EPSG:4326") -> gpd.GeoDataFrame:
 
 
 def resolve_overture_release(config: PipelineConfig) -> str | None:
+    """Resolve the configured or latest available Overture release identifier."""
     if config.source_version and config.source_version != "latest":
         return config.source_version
     if not config.download_missing:
@@ -75,10 +77,12 @@ def resolve_overture_release(config: PipelineConfig) -> str | None:
 
 
 def _sql_quote(value: str | Path) -> str:
+    """Escape single quotes for DuckDB SQL string interpolation."""
     return str(value).replace("'", "''")
 
 
 def _decode_sql_geometry(value):
+    """Decode WKB, hex WKB, WKT, or shapely-like geometry values from SQL rows."""
     if value is None:
         return None
     if isinstance(value, memoryview):
@@ -101,6 +105,7 @@ def _decode_sql_geometry(value):
 
 
 def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDataFrame:
+    """Load a SQL table/query into a GeoDataFrame using a configured geometry column."""
     try:
         from sqlalchemy import create_engine, text
     except ImportError as exc:
@@ -120,7 +125,27 @@ def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
     if query:
         sql = str(query)
     elif table:
-        sql = f"SELECT * FROM {table}"
+        columns = list(source.get("columns") or [])
+        if not columns and any(
+            source.get(key)
+            for key in (
+                "id_column",
+                "structure_type_column",
+                "height_column",
+                "stories_column",
+            )
+        ):
+            columns = [source.get("geom_column", "geom")]
+        for key in (
+            "id_column",
+            "structure_type_column",
+            "height_column",
+            "stories_column",
+        ):
+            column = source.get(key)
+            if column and column not in columns:
+                columns.append(column)
+        sql = f"SELECT {', '.join(columns)} FROM {table}" if columns else f"SELECT * FROM {table}"
         where = source.get("where")
         if where:
             sql = f"{sql} WHERE {where}"
@@ -139,6 +164,7 @@ def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
 
 
 def _sqlserver_name(name: str) -> str:
+    """Validate and quote a dotted SQL Server identifier such as schema.table."""
     parts = [part.strip() for part in name.split(".") if part.strip()]
     if not parts:
         raise ValueError("SQL Server identifier cannot be empty")
@@ -148,6 +174,7 @@ def _sqlserver_name(name: str) -> str:
 
 
 def read_sql_baseline_source(source: dict, config: PipelineConfig) -> gpd.GeoDataFrame:
+    """Read baseline geometries and keep only BaselineID plus geometry."""
     table = source.get("table")
     query = source.get("query")
     geom_column = source.get("geom_column", "geom")
@@ -185,6 +212,7 @@ def read_sql_baseline_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
 
 
 def buffered_baseline_boundary(baseline: gpd.GeoDataFrame, buffer_meters: float) -> gpd.GeoDataFrame:
+    """Buffer baseline features in meters and union them into an EPSG:4326 AOI."""
     if baseline.empty:
         raise ValueError("SQL baseline returned no geometries")
     work_crs = estimated_projected_crs(baseline)
@@ -199,6 +227,7 @@ def attach_baseline_proximity(
     baseline: gpd.GeoDataFrame,
     buffer_meters: float,
 ) -> gpd.GeoDataFrame:
+    """Attach nearest baseline ID, distance, and buffer distance to each structure."""
     if structures.empty or baseline.empty:
         return structures
     work_crs = estimated_projected_crs(structures, baseline)
@@ -221,6 +250,7 @@ def attach_baseline_proximity(
 
 
 def standardize_sql_footprints(gdf: gpd.GeoDataFrame, place: pd.Series, source: dict) -> gpd.GeoDataFrame:
+    """Normalize SQL footprint rows to the shared raw footprint schema."""
     if gdf.empty:
         return empty_gdf()
     gdf = clean_geom(gdf.to_crs(epsg=4326)).reset_index(drop=True)
@@ -263,6 +293,7 @@ def load_sql_footprints(
     boundary: gpd.GeoDataFrame,
     config: PipelineConfig,
 ) -> gpd.GeoDataFrame:
+    """Load configured SQL footprints and spatially assign them to a place boundary."""
     source = config.sql_footprint_source
     if not config.use_sql or not source:
         return empty_gdf()
@@ -280,6 +311,7 @@ def download_overture_with_duckdb(
     output_path: Path,
     release: str,
 ) -> None:
+    """Stream Overture building rows inside an AOI bbox directly to GeoParquet."""
     try:
         import duckdb
     except ImportError as exc:
@@ -322,6 +354,7 @@ def load_overture_buildings(
     config: PipelineConfig,
     release: str | None,
 ) -> gpd.GeoDataFrame:
+    """Load cached or downloaded Overture buildings and assign them to the place."""
     if not config.use_overture:
         return empty_gdf()
     city_slug = slugify(place["City"], place["State"], "USA")
@@ -365,12 +398,14 @@ def load_overture_buildings(
 
 
 def read_remote_csv(url: str, **kwargs) -> pd.DataFrame:
+    """Read a remote CSV with the certifi CA bundle for SSL consistency."""
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     with urlopen(url, context=ssl_context) as response:
         return pd.read_csv(response, **kwargs)
 
 
 def read_remote_json_lines(url: str) -> pd.DataFrame:
+    """Read plain or gzipped remote JSON-lines data into a DataFrame."""
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     with urlopen(url, context=ssl_context) as response:
         if url.split("?", 1)[0].endswith(".gz"):
@@ -380,6 +415,7 @@ def read_remote_json_lines(url: str) -> pd.DataFrame:
 
 
 def quadkeys_for_bounds(bounds: tuple[float, float, float, float], zoom: int) -> list[str]:
+    """Return Microsoft tile quadkeys intersecting a lon/lat bounding box."""
     minx, miny, maxx, maxy = bounds
     return sorted(
         {mercantile.quadkey(tile) for tile in mercantile.tiles(minx, miny, maxx, maxy, zooms=[zoom])}
@@ -387,6 +423,7 @@ def quadkeys_for_bounds(bounds: tuple[float, float, float, float], zoom: int) ->
 
 
 def read_microsoft_tile(url: str) -> gpd.GeoDataFrame:
+    """Read one Microsoft footprint tile and keep only useful geometry attributes."""
     df = read_remote_json_lines(url)
     if "properties" in df.columns:
         properties = pd.json_normalize(df["properties"]).set_index(df.index)
@@ -404,23 +441,21 @@ def download_microsoft_buildings(
     output_path: Path,
     config: PipelineConfig,
 ) -> gpd.GeoDataFrame:
+    """Download Microsoft tiles for an AOI, prefiltering links to avoid repeated scans."""
     bounds = bounds_tuple(boundary)
     quad_keys = quadkeys_for_bounds(bounds, zoom=config.microsoft_zoom)
     links = read_remote_csv(MICROSOFT_DATASET_LINKS_URL, dtype=str)
+    links = links[links["QuadKey"].isin(set(quad_keys))]
     pieces: list[gpd.GeoDataFrame] = []
     minx, miny, maxx, maxy = bounds
 
-    for quad_key in quad_keys:
-        rows = links[links["QuadKey"] == quad_key]
-        if rows.empty:
+    for url in links["Url"].dropna().unique():
+        tile = read_microsoft_tile(url)
+        if tile.empty:
             continue
-        for url in rows["Url"].dropna().unique():
-            tile = read_microsoft_tile(url)
-            if tile.empty:
-                continue
-            tile = tile.cx[minx:maxx, miny:maxy]
-            if not tile.empty:
-                pieces.append(tile)
+        tile = tile.cx[minx:maxx, miny:maxy]
+        if not tile.empty:
+            pieces.append(tile)
 
     if not pieces:
         return empty_gdf()
@@ -434,6 +469,7 @@ def download_microsoft_buildings(
 
 
 def standardize_microsoft(gdf: gpd.GeoDataFrame, place: pd.Series) -> gpd.GeoDataFrame:
+    """Normalize Microsoft fallback footprints to the shared footprint schema."""
     if gdf.empty:
         return empty_gdf()
     gdf = clean_geom(gdf.to_crs(epsg=4326)).reset_index(drop=True)
@@ -466,6 +502,7 @@ def load_microsoft_fallback(
     config: PipelineConfig,
     primary: gpd.GeoDataFrame,
 ) -> gpd.GeoDataFrame:
+    """Load Microsoft fallback footprints and remove rows duplicated by primary data."""
     if not config.use_microsoft or not config.add_microsoft_fallback:
         return empty_gdf()
     city_slug = slugify(place["City"], place["State"], "USA")
@@ -491,6 +528,7 @@ def load_microsoft_fallback(
 
 
 def get_osm_buildings(boundary: gpd.GeoDataFrame, config: PipelineConfig) -> gpd.GeoDataFrame:
+    """Fetch OSM building attributes for small/debug AOIs when enabled."""
     if not config.use_osm:
         return empty_gdf()
     try:
@@ -524,10 +562,18 @@ def get_osm_buildings(boundary: gpd.GeoDataFrame, config: PipelineConfig) -> gpd
 
 
 def attach_osm_attributes(base: gpd.GeoDataFrame, osm: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Attach OSM attributes to structures using representative-point containment."""
     columns = ["OSMID", "OSM_StructureType", "Stories_OSM", "Height_OSM", "Units_OSM"]
-    for column in columns:
-        if column not in base.columns:
-            base[column] = np.nan if column in {"Stories_OSM", "Height_OSM", "Units_OSM"} else pd.NA
+    ensure_columns(
+        base,
+        {
+            "OSMID": pd.NA,
+            "OSM_StructureType": pd.NA,
+            "Stories_OSM": np.nan,
+            "Height_OSM": np.nan,
+            "Units_OSM": np.nan,
+        },
+    )
     if base.empty or osm.empty:
         return base
     points = base[["StructureID", "geometry"]].copy()
@@ -541,6 +587,7 @@ def attach_osm_attributes(base: gpd.GeoDataFrame, osm: gpd.GeoDataFrame) -> gpd.
 
 
 def iter_boundary_tiles(boundary: gpd.GeoDataFrame, step_deg: float):
+    """Yield simple lon/lat tiles that intersect the AOI for NSI API requests."""
     minx, miny, maxx, maxy = bounds_tuple(boundary)
     x_count = max(1, math.ceil((maxx - minx) / step_deg))
     y_count = max(1, math.ceil((maxy - miny) / step_deg))
@@ -557,6 +604,7 @@ def iter_boundary_tiles(boundary: gpd.GeoDataFrame, step_deg: float):
 
 
 def get_nsi_structures(boundary: gpd.GeoDataFrame, config: PipelineConfig) -> gpd.GeoDataFrame:
+    """Fetch USACE NSI point features over tiled AOI requests with de-duplication."""
     if not config.use_nsi:
         return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
     session = requests.Session()
@@ -594,21 +642,25 @@ def get_nsi_structures(boundary: gpd.GeoDataFrame, config: PipelineConfig) -> gp
 
 
 def _mode_value(series: pd.Series):
+    """Return the most common non-null value for groupby aggregation."""
     values = series.dropna()
     mode = values.mode()
     return mode.iloc[0] if not mode.empty else (values.iloc[0] if not values.empty else pd.NA)
 
 
 def _first_value(series: pd.Series):
+    """Return the first non-null value for groupby aggregation."""
     values = series.dropna()
     return values.iloc[0] if not values.empty else pd.NA
 
 
 def _sum_min_count(series: pd.Series):
+    """Sum values while preserving NA when every value is missing."""
     return series.sum(min_count=1)
 
 
 def attach_nsi_attributes(base: gpd.GeoDataFrame, nsi: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Aggregate NSI point attributes into containing structure footprints."""
     columns = [
         "NSI_FD_ID",
         "NSI_RecordCount",
@@ -621,9 +673,15 @@ def attach_nsi_attributes(base: gpd.GeoDataFrame, nsi: gpd.GeoDataFrame) -> gpd.
         "NSI_Pop2AM",
         "NSI_Pop2PM",
     ]
-    for column in columns:
-        if column not in base.columns:
-            base[column] = pd.NA if column in {"NSI_FD_ID", "NSI_OccType", "NSI_DamageCategory"} else np.nan
+    ensure_columns(
+        base,
+        {
+            column: pd.NA
+            if column in {"NSI_FD_ID", "NSI_OccType", "NSI_DamageCategory"}
+            else np.nan
+            for column in columns
+        },
+    )
     if base.empty or nsi.empty:
         return base
 
@@ -681,6 +739,7 @@ def attach_nsi_attributes(base: gpd.GeoDataFrame, nsi: gpd.GeoDataFrame) -> gpd.
 
 
 def get_acs_household_size(place: pd.Series, config: PipelineConfig) -> tuple[float | None, str | None]:
+    """Fetch ACS average household size for residential occupancy fallback."""
     if not config.use_census:
         return None, None
     session = requests.Session()
@@ -712,10 +771,12 @@ def get_acs_household_size(place: pd.Series, config: PipelineConfig) -> tuple[fl
 
 
 def normalize_field_name(value: str) -> str:
+    """Normalize source field names for resilient parcel column matching."""
     return re.sub(r"[^a-z0-9]+", "", str(value).lower())
 
 
 def find_source_column(gdf: gpd.GeoDataFrame, source: dict, canonical_name: str) -> str | None:
+    """Find a source column for a canonical parcel attribute using aliases."""
     field_map = source.get("field_map", {})
     configured = field_map.get(canonical_name) or field_map.get(canonical_name.lower())
     candidates = []
@@ -731,6 +792,7 @@ def find_source_column(gdf: gpd.GeoDataFrame, source: dict, canonical_name: str)
 
 
 def source_for_place(place: pd.Series, config: PipelineConfig, source: dict | str | None) -> dict | None:
+    """Resolve explicit or configured parcel sources by GEOID, slug, or label."""
     selected = source
     keys = [
         str(place["PlaceGEOID"]),
@@ -750,12 +812,19 @@ def source_for_place(place: pd.Series, config: PipelineConfig, source: dict | st
 
 
 def read_parcel_source(source: dict, boundary: gpd.GeoDataFrame, config: PipelineConfig) -> gpd.GeoDataFrame:
+    """Read local or ArcGIS parcel data, clip to AOI, and standardize columns."""
     if "path" in source:
         path = Path(source["path"]).expanduser()
         if not path.exists():
             LOGGER.warning("Parcels skipped: file not found at %s", path)
             return empty_gdf()
-        parcels = gpd.read_parquet(path) if path.suffix.lower() in {".parquet", ".geoparquet"} else gpd.read_file(path)
+        if path.suffix.lower() in {".parquet", ".geoparquet"}:
+            parcels = gpd.read_parquet(path)
+        else:
+            try:
+                parcels = gpd.read_file(path, bbox=bounds_tuple(boundary))
+            except TypeError:
+                parcels = gpd.read_file(path)
     elif "url" in source:
         url = source["url"].rstrip("/")
         query_url = url if url.endswith("/query") else f"{url}/query"
@@ -833,6 +902,7 @@ def attach_parcel_attributes(
     base: gpd.GeoDataFrame,
     parcels: gpd.GeoDataFrame,
 ) -> gpd.GeoDataFrame:
+    """Attach parcel attributes to structures using representative-point containment."""
     columns = [
         "ParcelID",
         "ParcelAddress",
@@ -844,9 +914,10 @@ def attach_parcel_attributes(
         "ParcelSource",
         "ParcelMatchMethod",
     ]
-    for column in columns:
-        if column not in base.columns:
-            base[column] = pd.NA if column in PARCEL_TEXT_COLUMNS else np.nan
+    ensure_columns(
+        base,
+        {column: pd.NA if column in PARCEL_TEXT_COLUMNS else np.nan for column in columns},
+    )
     if base.empty or parcels.empty:
         return base
     points = base[["StructureID", "geometry"]].copy()
@@ -871,6 +942,7 @@ def load_and_attach_parcels(
     config: PipelineConfig,
     parcel_source: dict | str | None = None,
 ) -> gpd.GeoDataFrame:
+    """Resolve, cache, read, and attach parcel data for one place when configured."""
     if not config.use_parcels:
         return base
     source = source_for_place(place, config, parcel_source)

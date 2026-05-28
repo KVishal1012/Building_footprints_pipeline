@@ -13,16 +13,19 @@ from structures_pipeline.constants import STATE_ABBR_TO_NAME, STATE_FIPS, STATE_
 
 
 def utc_now_iso() -> str:
+    """Return the current UTC timestamp in ISO-8601 form for manifests."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def slugify(*parts: str) -> str:
+    """Build a stable lowercase filesystem slug from city, state, and country parts."""
     text = "_".join(str(part) for part in parts if part)
     text = re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_").lower()
     return text or "place"
 
 
 def normalize_state_name(state: str) -> str:
+    """Expand two-letter state abbreviations while preserving full state names."""
     stripped = state.strip()
     if len(stripped) == 2 and stripped.upper() in STATE_ABBR_TO_NAME:
         return STATE_ABBR_TO_NAME[stripped.upper()]
@@ -30,6 +33,7 @@ def normalize_state_name(state: str) -> str:
 
 
 def statefp_for_state(state: str) -> str:
+    """Resolve a state name or abbreviation to its Census two-digit state FIPS code."""
     name = normalize_state_name(state).lower()
     if name not in STATE_FIPS:
         raise ValueError(f"Unsupported state for v1 US pipeline: {state}")
@@ -37,6 +41,7 @@ def statefp_for_state(state: str) -> str:
 
 
 def state_abbr_for_state(state: str) -> str:
+    """Resolve a state name or abbreviation to its USPS abbreviation."""
     name = normalize_state_name(state).lower()
     if name not in STATE_NAME_TO_ABBR:
         raise ValueError(f"Unsupported state for v1 US pipeline: {state}")
@@ -44,6 +49,7 @@ def state_abbr_for_state(state: str) -> str:
 
 
 def normalize_place_name(value: str) -> str:
+    """Normalize place names for Census matching by removing legal suffix words."""
     text = str(value).lower()
     text = re.sub(r"\b(city|town|village|borough|municipality|cdp)\b", "", text)
     text = re.sub(r"[^a-z0-9]+", " ", text).strip()
@@ -51,16 +57,19 @@ def normalize_place_name(value: str) -> str:
 
 
 def to_numeric_safe(series: pd.Series | None, index=None) -> pd.Series:
+    """Coerce a nullable column to float-like numeric values without raising."""
     if series is None:
         return pd.Series(np.nan, index=index, dtype="float64")
     return pd.to_numeric(series, errors="coerce")
 
 
 def parse_height_meters(series: pd.Series | None, index=None) -> pd.Series:
+    """Parse numeric, meter, or foot height strings into meter values."""
     if series is None:
         return pd.Series(np.nan, index=index, dtype="float64")
 
     def _parse(value):
+        """Parse one raw height value into meters or NaN."""
         if pd.isna(value):
             return np.nan
         text = str(value).strip().lower()
@@ -80,6 +89,7 @@ def parse_height_meters(series: pd.Series | None, index=None) -> pd.Series:
 
 
 def json_safe(value):
+    """Convert config values into deterministic JSON-safe primitives."""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -92,6 +102,7 @@ def json_safe(value):
 
 
 def stable_hash(value, length: int = 12) -> str:
+    """Return a short deterministic SHA-1 hash for cache keys and manifests."""
     payload = json.dumps(json_safe(value), sort_keys=True, separators=(",", ":"))
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:length]
 
@@ -99,6 +110,7 @@ def stable_hash(value, length: int = 12) -> str:
 def combine_first_with_source(
     df: pd.DataFrame, choices: list[tuple[str, str]]
 ) -> tuple[pd.Series, pd.Series]:
+    """Choose the first non-empty candidate column and record its source label."""
     values = pd.Series(pd.NA, index=df.index, dtype="object")
     sources = pd.Series(pd.NA, index=df.index, dtype="object")
     for column, source in choices:
@@ -114,4 +126,12 @@ def combine_first_with_source(
 
 
 def confidence_for_source(source: pd.Series, mapping: dict[str, float]) -> pd.Series:
+    """Map source labels to confidence scores as a float series."""
     return source.map(mapping).astype("float64")
+
+
+def ensure_columns(df: pd.DataFrame, defaults: dict[str, object]) -> None:
+    """Add missing columns in place using scalar defaults to avoid repeated loops."""
+    missing = {column: value for column, value in defaults.items() if column not in df.columns}
+    if missing:
+        df[list(missing)] = pd.DataFrame(missing, index=df.index)

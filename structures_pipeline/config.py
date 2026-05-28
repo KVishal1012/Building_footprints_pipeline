@@ -34,6 +34,7 @@ class PipelineConfig:
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        """Normalize path and optional dict-like settings after dataclass creation."""
         self.data_dir = Path(self.data_dir)
         self.output_dir = Path(self.output_dir)
         self.raw_dir = Path(self.raw_dir)
@@ -44,21 +45,26 @@ class PipelineConfig:
 
     @property
     def cities_output_dir(self) -> Path:
+        """Directory for per-place GeoParquet outputs partitioned by state FIPS."""
         return self.output_dir / "cities"
 
     @property
     def master_output_dir(self) -> Path:
+        """Directory for the combined multi-place master dataset."""
         return self.output_dir / "structures_master"
 
     @property
     def manifest_dir(self) -> Path:
+        """Directory for reproducibility manifests that describe each run."""
         return self.output_dir / "manifests"
 
     @property
     def qa_dir(self) -> Path:
+        """Directory for city-level QA metrics and validation artifacts."""
         return self.output_dir / "qa"
 
     def ensure_dirs(self) -> None:
+        """Create every directory the pipeline may write to during a run."""
         for path in (
             self.data_dir,
             self.output_dir,

@@ -14,6 +14,7 @@ from structures_pipeline.utils import combine_first_with_source, confidence_for_
 
 
 def normalize_structure_type(raw: pd.Series) -> pd.Series:
+    """Map heterogeneous source use/type labels into the canonical structure taxonomy."""
     text = raw.fillna("").astype(str).str.lower()
     result = pd.Series(pd.NA, index=raw.index, dtype="object")
     rules = [
@@ -38,6 +39,7 @@ def normalize_structure_type(raw: pd.Series) -> pd.Series:
 
 
 def _ensure_columns(df: pd.DataFrame, columns: list[str]) -> None:
+    """Add missing intermediate columns as nullable values before attribution rules run."""
     for column in columns:
         if column not in df.columns:
             df[column] = pd.NA
@@ -51,6 +53,7 @@ def finalize_attributes(
     overture_release: str | None,
     census_year: int,
 ) -> gpd.GeoDataFrame:
+    """Build the final output schema with derived attributes, methods, and confidence."""
     if base.empty:
         for column in REQUIRED_OUTPUT_COLUMNS:
             if column != "geometry":
