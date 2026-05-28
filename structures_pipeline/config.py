@@ -30,6 +30,7 @@ class PipelineConfig:
     parcel_overlap_ratio_threshold: float = 0.05
     cache_remote_parcels: bool = True
     sql_footprint_source: dict | None = None
+    sql_baseline_source: dict | None = None
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -38,6 +39,7 @@ class PipelineConfig:
         self.raw_dir = Path(self.raw_dir)
         self.cache_dir = Path(self.cache_dir)
         self.sql_footprint_source = dict(self.sql_footprint_source or {})
+        self.sql_baseline_source = dict(self.sql_baseline_source or {})
         self.parcel_sources = dict(self.parcel_sources)
 
     @property

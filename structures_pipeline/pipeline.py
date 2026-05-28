@@ -14,6 +14,8 @@ from structures_pipeline.geometry import normalize_boundary
 from structures_pipeline.sources import (
     attach_nsi_attributes,
     attach_osm_attributes,
+    attach_baseline_proximity,
+    buffered_baseline_boundary,
     get_acs_household_size,
     get_nsi_structures,
     get_osm_buildings,
@@ -21,6 +23,7 @@ from structures_pipeline.sources import (
     load_microsoft_fallback,
     load_overture_buildings,
     load_sql_footprints,
+    read_sql_baseline_source,
     resolve_overture_release,
 )
 from structures_pipeline.utils import json_safe, utc_now_iso
@@ -54,6 +57,19 @@ def build_place_structures(
     config.ensure_dirs()
     boundary = normalize_boundary(boundary_for_place(place))
     LOGGER.info("Building structures for %s, %s", place["City"], place["State"])
+
+    baseline = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+    baseline_source = config.sql_baseline_source
+    baseline_buffer_meters = float(baseline_source.get("buffer_meters", 0) or 0)
+    if baseline_source:
+        baseline = read_sql_baseline_source(baseline_source, config)
+        boundary = buffered_baseline_boundary(baseline, baseline_buffer_meters)
+        LOGGER.info(
+            "Using %s SQL baseline features buffered by %s meters for %s",
+            len(baseline),
+            baseline_buffer_meters,
+            place["PlaceGEOID"],
+        )
 
     sql_footprints = load_sql_footprints(place, boundary, config)
     overture = load_overture_buildings(place, boundary, config, overture_release)
@@ -93,6 +109,8 @@ def build_place_structures(
         overture_release=overture_release,
         census_year=resolve_census_year(config),
     )
+    if baseline_source:
+        final = attach_baseline_proximity(final, baseline, baseline_buffer_meters)
     metrics = validate_output(final) if not final.empty else {"row_count": 0}
     output_path = city_output_path(config, place)
     metrics.update(

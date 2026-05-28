@@ -2,10 +2,16 @@ import sqlite3
 
 import geopandas as gpd
 import pandas as pd
-from shapely.geometry import box
+from shapely.geometry import Point, box
 
 from structures_pipeline.config import PipelineConfig
-from structures_pipeline.sources import load_sql_footprints, read_sql_geometry_source
+from structures_pipeline.sources import (
+    attach_baseline_proximity,
+    buffered_baseline_boundary,
+    load_sql_footprints,
+    read_sql_baseline_source,
+    read_sql_geometry_source,
+)
 
 
 def test_read_sql_geometry_source_reads_wkt_geom_table(tmp_path):
@@ -77,3 +83,37 @@ def test_load_sql_footprints_standardizes_and_assigns_to_place(tmp_path):
     assert footprints.iloc[0]["SQLStructureType"] == "house"
     assert footprints.iloc[0]["SQLHeight"] == 6.0
     assert footprints.iloc[0]["SQLStories"] == 2
+
+
+def test_sql_baseline_source_buffers_and_tags_nearest_structure(tmp_path):
+    db_path = tmp_path / "baseline.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE baseline (asset_id TEXT, geom TEXT)")
+        conn.execute("INSERT INTO baseline VALUES (?, ?)", ("asset-1", "POINT (0.15 0.15)"))
+
+    config = PipelineConfig(
+        sql_baseline_source={
+            "connection": f"sqlite:///{db_path}",
+            "table": "baseline",
+            "geom_column": "geom",
+            "id_column": "asset_id",
+            "buffer_meters": 100,
+        }
+    )
+
+    baseline = read_sql_baseline_source(config.sql_baseline_source, config)
+    boundary = buffered_baseline_boundary(baseline, 100)
+    structures = gpd.GeoDataFrame(
+        {"StructureID": ["s1"]},
+        geometry=[box(0.149, 0.149, 0.151, 0.151)],
+        crs="EPSG:4326",
+    )
+
+    tagged = attach_baseline_proximity(structures, baseline, 100)
+
+    assert baseline.iloc[0]["BaselineID"] == "asset-1"
+    assert len(boundary) == 1
+    assert boundary.geometry.iloc[0].contains(Point(0.15, 0.15))
+    assert tagged.iloc[0]["BaselineID"] == "asset-1"
+    assert tagged.iloc[0]["BaselineBuffer_m"] == 100
+    assert tagged.iloc[0]["BaselineDistance_m"] >= 0

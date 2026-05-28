@@ -52,6 +52,20 @@ python structure_pipeline.py \
 
 For databases that do not return geometry as WKB/WKT directly, pass a query that aliases the geometry to `geom`, for example `ST_AsBinary(geom) AS geom`.
 
+A SQL Server baseline table can also define the area of interest. The pipeline reads the baseline geometry, buffers it in meters, captures structures around that buffer, and writes `BaselineID`, `BaselineDistance_m`, and `BaselineBuffer_m` to the output:
+
+```bash
+export STRUCTURES_SQL_URL='mssql+pyodbc:///?odbc_connect=Driver%3D%7BODBC+Driver+18+for+SQL+Server%7D%3BServer%3Dtcp%3Aserver.example.com%2C1433%3BDatabase%3Dgis%3BUID%3Duser%3BPWD%3Dpassword%3BEncrypt%3Dyes'
+python structure_pipeline.py \
+  --place "Houston, Texas" \
+  --baseline-sql-table dbo.AssetBaseline \
+  --baseline-sql-geom-column Shape \
+  --baseline-sql-id-column AssetID \
+  --baseline-buffer-meters 250 \
+  --baseline-sql-where "Status = 'Active'" \
+  --baseline-sqlserver-geometry-methods
+```
+
 Use `--no-download` to force cached local files only. Use `--use-osm` only for small/debug runs because OSM enrichment calls Overpass through OSMnx.
 
 ## Outputs
@@ -63,7 +77,7 @@ For each city, the pipeline writes:
 - Run manifest: `data/output/manifests/latest_run.json`
 - QA metrics: `data/output/qa/city_metrics.parquet`
 
-Required attributes include `StructureType`, `NumUnits`, `NumStories`, `FootprintArea_m2`, `FootprintArea_sqft`, `OccupantCount`, source/method/confidence fields, source release fields, and geometry.
+Required attributes include `StructureType`, `NumUnits`, `NumStories`, `FootprintArea_m2`, `FootprintArea_sqft`, `OccupantCount`, optional baseline fields, source/method/confidence fields, source release fields, and geometry.
 
 ## Attribute Rules
 

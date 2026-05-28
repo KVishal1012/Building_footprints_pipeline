@@ -39,6 +39,26 @@ def parse_sql_source_args(args: argparse.Namespace) -> dict | None:
         "source_name": args.sql_source_name,
     }
 
+
+def parse_sql_baseline_args(args: argparse.Namespace) -> dict | None:
+    if not args.baseline_sql_table and not args.baseline_sql_query:
+        return None
+    if args.baseline_sql_table and args.baseline_sql_query:
+        raise argparse.ArgumentTypeError(
+            "Use either --baseline-sql-table or --baseline-sql-query, not both."
+        )
+    return {
+        "connection_env": args.baseline_sql_connection_env,
+        "table": args.baseline_sql_table,
+        "query": args.baseline_sql_query,
+        "geom_column": args.baseline_sql_geom_column,
+        "id_column": args.baseline_sql_id_column,
+        "where": args.baseline_sql_where,
+        "crs": args.baseline_sql_crs,
+        "buffer_meters": args.baseline_buffer_meters,
+        "sqlserver_geometry_methods": args.baseline_sqlserver_geometry_methods,
+    }
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build production US structure polygons.")
     target = parser.add_mutually_exclusive_group(required=True)
@@ -67,6 +87,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sql-where", help="Optional WHERE clause used with --sql-table.")
     parser.add_argument("--sql-crs", default="EPSG:4326", help="CRS for SQL geometries when the source does not provide one.")
     parser.add_argument("--sql-source-name", default="sql", help="Label recorded in FootprintSource for SQL rows.")
+    parser.add_argument("--baseline-sql-connection-env", default="STRUCTURES_SQL_URL")
+    parser.add_argument("--baseline-sql-table", help="SQL Server baseline table/view used to build a buffered AOI.")
+    parser.add_argument("--baseline-sql-query", help="SQL SELECT query that returns baseline geometries.")
+    parser.add_argument("--baseline-sql-geom-column", default="geom", help="Baseline geometry column.")
+    parser.add_argument("--baseline-sql-id-column", help="Stable baseline ID column added to output structures.")
+    parser.add_argument("--baseline-sql-where", help="Optional WHERE clause used with --baseline-sql-table.")
+    parser.add_argument("--baseline-sql-crs", default="EPSG:4326")
+    parser.add_argument("--baseline-buffer-meters", type=float, default=100.0)
+    parser.add_argument(
+        "--baseline-sqlserver-geometry-methods",
+        action="store_true",
+        help="Read SQL Server geometry/geography via STAsBinary() and STSrid when using --baseline-sql-table.",
+    )
     parser.add_argument("--use-osm", action="store_true")
     parser.add_argument("--no-nsi", action="store_true")
     parser.add_argument("--no-census", action="store_true")
@@ -90,6 +123,7 @@ def main(argv: list[str] | None = None) -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     sql_source = parse_sql_source_args(args)
+    sql_baseline_source = parse_sql_baseline_args(args)
     config = PipelineConfig(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
@@ -107,6 +141,7 @@ def main(argv: list[str] | None = None) -> None:
         use_census=not args.no_census,
         use_parcels=not args.no_parcels,
         sql_footprint_source=sql_source,
+        sql_baseline_source=sql_baseline_source,
         parcel_sources=dict(args.parcel_source),
     )
     result = run_pipeline(

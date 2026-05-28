@@ -35,6 +35,8 @@ from structures_pipeline.geometry import (
     clean_geom,
     dedupe_fallback_footprints,
     empty_gdf,
+    estimated_projected_crs,
+    normalize_boundary,
 )
 from structures_pipeline.utils import parse_height_meters, slugify, to_numeric_safe
 
@@ -134,6 +136,88 @@ def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
     geometry = df.pop(geom_column).map(_decode_sql_geometry)
     crs = source.get("crs", "EPSG:4326")
     return gpd.GeoDataFrame(df, geometry=geometry, crs=crs)
+
+
+def _sqlserver_name(name: str) -> str:
+    parts = [part.strip() for part in name.split(".") if part.strip()]
+    if not parts:
+        raise ValueError("SQL Server identifier cannot be empty")
+    if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_@$#]*", part) for part in parts):
+        raise ValueError(f"Unsafe SQL Server identifier: {name}")
+    return ".".join(f"[{part}]" for part in parts)
+
+
+def read_sql_baseline_source(source: dict, config: PipelineConfig) -> gpd.GeoDataFrame:
+    table = source.get("table")
+    query = source.get("query")
+    geom_column = source.get("geom_column", "geom")
+    use_sqlserver_methods = bool(source.get("sqlserver_geometry_methods"))
+    if table and not query and use_sqlserver_methods:
+        id_column = source.get("id_column")
+        id_select = f", {_sqlserver_name(id_column)} AS BaselineID" if id_column else ""
+        where = f" WHERE {source.get('where')}" if source.get("where") else ""
+        baseline_source = dict(source)
+        baseline_source["query"] = (
+            f"SELECT {_sqlserver_name(geom_column)}.STAsBinary() AS geometry_wkb, "
+            f"{_sqlserver_name(geom_column)}.STSrid AS geometry_srid{id_select} "
+            f"FROM {_sqlserver_name(table)}{where}"
+        )
+        baseline_source.pop("table", None)
+        baseline_source["geom_column"] = "geometry_wkb"
+        raw = read_sql_geometry_source(baseline_source, config)
+        if "geometry_srid" in raw.columns:
+            srid = pd.to_numeric(raw.pop("geometry_srid"), errors="coerce").dropna()
+            if not srid.empty and srid.iloc[0]:
+                raw = raw.set_crs(f"EPSG:{int(srid.iloc[0])}", allow_override=True)
+    else:
+        raw = read_sql_geometry_source(source, config)
+
+    if raw.empty:
+        return empty_gdf(["BaselineID"])
+    baseline = raw.to_crs(epsg=4326).reset_index(drop=True)
+    id_column = source.get("id_column")
+    if "BaselineID" not in baseline.columns:
+        if id_column and id_column in baseline.columns:
+            baseline["BaselineID"] = baseline[id_column].astype(str)
+        else:
+            baseline["BaselineID"] = [f"baseline_{i}" for i in range(len(baseline))]
+    return baseline[["BaselineID", "geometry"]]
+
+
+def buffered_baseline_boundary(baseline: gpd.GeoDataFrame, buffer_meters: float) -> gpd.GeoDataFrame:
+    if baseline.empty:
+        raise ValueError("SQL baseline returned no geometries")
+    work_crs = estimated_projected_crs(baseline)
+    buffered = baseline.to_crs(work_crs).geometry.buffer(buffer_meters)
+    unioned = buffered.union_all() if hasattr(buffered, "union_all") else buffered.unary_union
+    boundary = gpd.GeoDataFrame(geometry=[unioned], crs=work_crs).to_crs(epsg=4326)
+    return normalize_boundary(boundary)
+
+
+def attach_baseline_proximity(
+    structures: gpd.GeoDataFrame,
+    baseline: gpd.GeoDataFrame,
+    buffer_meters: float,
+) -> gpd.GeoDataFrame:
+    if structures.empty or baseline.empty:
+        return structures
+    work_crs = estimated_projected_crs(structures, baseline)
+    points = structures[["StructureID", "geometry"]].copy().to_crs(work_crs)
+    points["geometry"] = points.geometry.representative_point()
+    baseline_work = baseline[["BaselineID", "geometry"]].copy().to_crs(work_crs)
+    nearest = gpd.sjoin_nearest(
+        points,
+        baseline_work,
+        how="left",
+        distance_col="BaselineDistance_m",
+    ).drop_duplicates("StructureID")
+    nearest = nearest.set_index("StructureID")
+
+    out = structures.set_index("StructureID")
+    out["BaselineID"] = nearest["BaselineID"].reindex(out.index)
+    out["BaselineDistance_m"] = nearest["BaselineDistance_m"].reindex(out.index)
+    out["BaselineBuffer_m"] = buffer_meters
+    return out.reset_index()
 
 
 def standardize_sql_footprints(gdf: gpd.GeoDataFrame, place: pd.Series, source: dict) -> gpd.GeoDataFrame:
