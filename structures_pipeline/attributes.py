@@ -13,6 +13,7 @@ from structures_pipeline.geometry import add_area_columns
 from structures_pipeline.utils import combine_first_with_source, confidence_for_source, to_numeric_safe
 
 
+# Map heterogeneous source use/type labels into the canonical structure taxonomy.
 def normalize_structure_type(raw: pd.Series) -> pd.Series:
     """Map heterogeneous source use/type labels into the canonical structure taxonomy."""
     text = raw.fillna("").astype(str).str.lower()
@@ -38,6 +39,7 @@ def normalize_structure_type(raw: pd.Series) -> pd.Series:
     return result
 
 
+# Add missing intermediate columns as nullable values before attribution rules run.
 def _ensure_columns(df: pd.DataFrame, columns: list[str]) -> None:
     """Add missing intermediate columns as nullable values before attribution rules run."""
     for column in columns:
@@ -45,6 +47,7 @@ def _ensure_columns(df: pd.DataFrame, columns: list[str]) -> None:
             df[column] = pd.NA
 
 
+# Build the final output schema with derived attributes, methods, and confidence.
 def finalize_attributes(
     base: gpd.GeoDataFrame,
     place: pd.Series,

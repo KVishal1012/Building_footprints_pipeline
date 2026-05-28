@@ -23,6 +23,7 @@ from structures_pipeline.utils import normalize_place_name, normalize_state_name
 LOGGER = logging.getLogger(__name__)
 
 
+# Parse a CLI place string into normalized city/state fields.
 def parse_place(value: str) -> dict[str, str]:
     """Parse a CLI place string into normalized city/state fields."""
     if "," not in value:
@@ -31,11 +32,13 @@ def parse_place(value: str) -> dict[str, str]:
     return {"city": city.strip(), "state": normalize_state_name(state.strip())}
 
 
+# Return the configured Census vintage as an integer.
 def resolve_census_year(config: PipelineConfig) -> int:
     """Return the configured Census vintage as an integer."""
     return int(config.census_year)
 
 
+# Download a source file only when missing or overwrite is enabled.
 def _download(url: str, path: Path, config: PipelineConfig) -> None:
     """Download a source file only when missing or overwrite is enabled."""
     if path.exists() and not config.overwrite_raw:
@@ -49,18 +52,21 @@ def _download(url: str, path: Path, config: PipelineConfig) -> None:
     path.write_bytes(response.content)
 
 
+# Build the local cache path for one state's TIGER/Line place zip.
 def tiger_place_zip_path(config: PipelineConfig, statefp: str) -> Path:
     """Build the local cache path for one state's TIGER/Line place zip."""
     year = resolve_census_year(config)
     return config.raw_dir / "census" / "tiger" / str(year) / f"tl_{year}_{statefp}_place.zip"
 
 
+# Build the local cache path for the national Census gazetteer zip.
 def gazetteer_zip_path(config: PipelineConfig) -> Path:
     """Build the local cache path for the national Census gazetteer zip."""
     year = resolve_census_year(config)
     return config.raw_dir / "census" / "gazetteer" / str(year) / f"{year}_Gaz_place_national.zip"
 
 
+# Load the national Census gazetteer once for optional place metadata joins.
 def load_gazetteer(config: PipelineConfig) -> pd.DataFrame:
     """Load the national Census gazetteer once for optional place metadata joins."""
     year = resolve_census_year(config)
@@ -97,6 +103,7 @@ def load_gazetteer(config: PipelineConfig) -> pd.DataFrame:
     )
 
 
+# Normalize TIGER/Line place features to the pipeline's place inventory schema.
 def normalize_places(raw: gpd.GeoDataFrame, year: int) -> gpd.GeoDataFrame:
     """Normalize TIGER/Line place features to the pipeline's place inventory schema."""
     raw = raw.to_crs(epsg=4326) if raw.crs else raw.set_crs(epsg=4326)
@@ -120,6 +127,7 @@ def normalize_places(raw: gpd.GeoDataFrame, year: int) -> gpd.GeoDataFrame:
     return clean_geom(places).reset_index(drop=True)
 
 
+# Load and normalize all Census places for one state FIPS code.
 def load_state_places(
     config: PipelineConfig,
     statefp: str,
@@ -139,6 +147,7 @@ def load_state_places(
     return places.reset_index(drop=True)
 
 
+# Load Census places for requested states or the full 50-state-plus-DC set.
 def load_place_inventory(
     config: PipelineConfig,
     states: list[str] | None = None,
@@ -157,6 +166,7 @@ def load_place_inventory(
     )
 
 
+# Resolve CLI target options to the exact Census place rows to process.
 def select_places(
     config: PipelineConfig,
     place_specs: list[dict[str, str]] | None = None,
@@ -198,6 +208,7 @@ def select_places(
     )
 
 
+# Return the canonical output slug for a Census place row.
 def place_slug(place: pd.Series) -> str:
     """Return the canonical output slug for a Census place row."""
     return slugify(place["City"], place["State"], "USA")

@@ -33,6 +33,7 @@ class PipelineConfig:
     sql_baseline_source: dict | None = None
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
+    # Normalize path and optional dict-like settings after dataclass creation.
     def __post_init__(self) -> None:
         """Normalize path and optional dict-like settings after dataclass creation."""
         self.data_dir = Path(self.data_dir)
@@ -43,26 +44,31 @@ class PipelineConfig:
         self.sql_baseline_source = dict(self.sql_baseline_source or {})
         self.parcel_sources = dict(self.parcel_sources)
 
+    # Directory for per-place GeoParquet outputs partitioned by state FIPS.
     @property
     def cities_output_dir(self) -> Path:
         """Directory for per-place GeoParquet outputs partitioned by state FIPS."""
         return self.output_dir / "cities"
 
+    # Directory for the combined multi-place master dataset.
     @property
     def master_output_dir(self) -> Path:
         """Directory for the combined multi-place master dataset."""
         return self.output_dir / "structures_master"
 
+    # Directory for reproducibility manifests that describe each run.
     @property
     def manifest_dir(self) -> Path:
         """Directory for reproducibility manifests that describe each run."""
         return self.output_dir / "manifests"
 
+    # Directory for city-level QA metrics and validation artifacts.
     @property
     def qa_dir(self) -> Path:
         """Directory for city-level QA metrics and validation artifacts."""
         return self.output_dir / "qa"
 
+    # Create every directory the pipeline may write to during a run.
     def ensure_dirs(self) -> None:
         """Create every directory the pipeline may write to during a run."""
         for path in (

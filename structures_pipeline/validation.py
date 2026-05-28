@@ -8,6 +8,7 @@ import pandas as pd
 from structures_pipeline.constants import REQUIRED_OUTPUT_COLUMNS
 
 
+# Validate required schema, geometry health, IDs, and key fill-rate metrics.
 def validate_output(gdf: gpd.GeoDataFrame) -> dict:
     """Validate required schema, geometry health, IDs, and key fill-rate metrics."""
     missing = [column for column in REQUIRED_OUTPUT_COLUMNS if column not in gdf.columns]
@@ -47,6 +48,7 @@ def validate_output(gdf: gpd.GeoDataFrame) -> dict:
     }
 
 
+# Write accumulated per-city QA metrics to a parquet file.
 def write_city_metrics(metrics: list[dict], path: Path) -> None:
     """Write accumulated per-city QA metrics to a parquet file."""
     path.parent.mkdir(parents=True, exist_ok=True)

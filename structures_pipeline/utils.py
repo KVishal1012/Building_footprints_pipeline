@@ -12,11 +12,13 @@ import pandas as pd
 from structures_pipeline.constants import STATE_ABBR_TO_NAME, STATE_FIPS, STATE_NAME_TO_ABBR
 
 
+# Return the current UTC timestamp in ISO-8601 form for manifests.
 def utc_now_iso() -> str:
     """Return the current UTC timestamp in ISO-8601 form for manifests."""
     return datetime.now(timezone.utc).isoformat()
 
 
+# Build a stable lowercase filesystem slug from city, state, and country parts.
 def slugify(*parts: str) -> str:
     """Build a stable lowercase filesystem slug from city, state, and country parts."""
     text = "_".join(str(part) for part in parts if part)
@@ -24,6 +26,7 @@ def slugify(*parts: str) -> str:
     return text or "place"
 
 
+# Expand two-letter state abbreviations while preserving full state names.
 def normalize_state_name(state: str) -> str:
     """Expand two-letter state abbreviations while preserving full state names."""
     stripped = state.strip()
@@ -32,6 +35,7 @@ def normalize_state_name(state: str) -> str:
     return stripped
 
 
+# Resolve a state name or abbreviation to its Census two-digit state FIPS code.
 def statefp_for_state(state: str) -> str:
     """Resolve a state name or abbreviation to its Census two-digit state FIPS code."""
     name = normalize_state_name(state).lower()
@@ -40,6 +44,7 @@ def statefp_for_state(state: str) -> str:
     return STATE_FIPS[name]
 
 
+# Resolve a state name or abbreviation to its USPS abbreviation.
 def state_abbr_for_state(state: str) -> str:
     """Resolve a state name or abbreviation to its USPS abbreviation."""
     name = normalize_state_name(state).lower()
@@ -48,6 +53,7 @@ def state_abbr_for_state(state: str) -> str:
     return STATE_NAME_TO_ABBR[name]
 
 
+# Normalize place names for Census matching by removing legal suffix words.
 def normalize_place_name(value: str) -> str:
     """Normalize place names for Census matching by removing legal suffix words."""
     text = str(value).lower()
@@ -56,6 +62,7 @@ def normalize_place_name(value: str) -> str:
     return text
 
 
+# Coerce a nullable column to float-like numeric values without raising.
 def to_numeric_safe(series: pd.Series | None, index=None) -> pd.Series:
     """Coerce a nullable column to float-like numeric values without raising."""
     if series is None:
@@ -63,11 +70,13 @@ def to_numeric_safe(series: pd.Series | None, index=None) -> pd.Series:
     return pd.to_numeric(series, errors="coerce")
 
 
+# Parse numeric, meter, or foot height strings into meter values.
 def parse_height_meters(series: pd.Series | None, index=None) -> pd.Series:
     """Parse numeric, meter, or foot height strings into meter values."""
     if series is None:
         return pd.Series(np.nan, index=index, dtype="float64")
 
+    # Parse one raw height value into meters or NaN.
     def _parse(value):
         """Parse one raw height value into meters or NaN."""
         if pd.isna(value):
@@ -88,6 +97,7 @@ def parse_height_meters(series: pd.Series | None, index=None) -> pd.Series:
     return series.apply(_parse)
 
 
+# Convert config values into deterministic JSON-safe primitives.
 def json_safe(value):
     """Convert config values into deterministic JSON-safe primitives."""
     if isinstance(value, Path):
@@ -101,12 +111,14 @@ def json_safe(value):
     return value
 
 
+# Return a short deterministic SHA-1 hash for cache keys and manifests.
 def stable_hash(value, length: int = 12) -> str:
     """Return a short deterministic SHA-1 hash for cache keys and manifests."""
     payload = json.dumps(json_safe(value), sort_keys=True, separators=(",", ":"))
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:length]
 
 
+# Choose the first non-empty candidate column and record its source label.
 def combine_first_with_source(
     df: pd.DataFrame, choices: list[tuple[str, str]]
 ) -> tuple[pd.Series, pd.Series]:
@@ -125,11 +137,13 @@ def combine_first_with_source(
     return values, sources
 
 
+# Map source labels to confidence scores as a float series.
 def confidence_for_source(source: pd.Series, mapping: dict[str, float]) -> pd.Series:
     """Map source labels to confidence scores as a float series."""
     return source.map(mapping).astype("float64")
 
 
+# Add missing columns in place using scalar defaults to avoid repeated loops.
 def ensure_columns(df: pd.DataFrame, defaults: dict[str, object]) -> None:
     """Add missing columns in place using scalar defaults to avoid repeated loops."""
     missing = {column: value for column, value in defaults.items() if column not in df.columns}

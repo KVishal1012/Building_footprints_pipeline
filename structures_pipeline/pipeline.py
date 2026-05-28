@@ -32,12 +32,14 @@ from structures_pipeline.validation import validate_output, write_city_metrics
 LOGGER = logging.getLogger(__name__)
 
 
+# Convert one Census place row into a single-row boundary GeoDataFrame.
 def boundary_for_place(place: pd.Series) -> gpd.GeoDataFrame:
     """Convert one Census place row into a single-row boundary GeoDataFrame."""
     attrs = place.drop(labels=["geometry"]).to_dict()
     return gpd.GeoDataFrame([attrs], geometry=[place.geometry], crs="EPSG:4326")
 
 
+# Return the deterministic per-place output path for a Census place row.
 def city_output_path(config: PipelineConfig, place: pd.Series) -> Path:
     """Return the deterministic per-place output path for a Census place row."""
     slug = place_slug(place)
@@ -48,6 +50,7 @@ def city_output_path(config: PipelineConfig, place: pd.Series) -> Path:
     )
 
 
+# Build, enrich, validate, and optionally write structures for one place.
 def build_place_structures(
     place: pd.Series,
     config: PipelineConfig | None = None,
@@ -131,6 +134,7 @@ def build_place_structures(
     return final, metrics
 
 
+# Write a combined master GeoParquet from city outputs with low-memory DuckDB.
 def write_master_dataset(city_paths: list[Path], config: PipelineConfig) -> Path | None:
     """Write a combined master GeoParquet from city outputs with low-memory DuckDB."""
     if not city_paths:
@@ -165,6 +169,7 @@ def write_master_dataset(city_paths: list[Path], config: PipelineConfig) -> Path
     return output_path
 
 
+# Write a JSON manifest that records inputs, outputs, versions, and config.
 def write_manifest(
     config: PipelineConfig,
     *,
@@ -194,6 +199,7 @@ def write_manifest(
     return path
 
 
+# Run the structure workflow for a resolved set of Census places.
 def build_places(
     places: gpd.GeoDataFrame,
     config: PipelineConfig | None = None,
@@ -240,6 +246,7 @@ def build_places(
     }
 
 
+# Resolve CLI target selectors and run the pipeline for the selected places.
 def run_pipeline(
     *,
     place_specs: list[dict[str, str]] | None = None,
@@ -261,6 +268,7 @@ def run_pipeline(
     return build_places(places, config=config)
 
 
+# Compatibility wrapper that builds structures for one city/state pair.
 def build_city_structures(
     city: str,
     state: str,
@@ -281,6 +289,7 @@ def build_city_structures(
     return final
 
 
+# Compatibility wrapper that builds multiple city/state pairs and returns master data.
 def build_many_cities(
     cities: list[dict[str, str]],
     config: PipelineConfig | None = None,
@@ -294,6 +303,7 @@ def build_many_cities(
     return gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
 
 
+# Compatibility wrapper around Census place parsing for the root script.
 def parse_place_arg(value: str) -> dict[str, str]:
     """Compatibility wrapper around Census place parsing for the root script."""
     return parse_place(value)

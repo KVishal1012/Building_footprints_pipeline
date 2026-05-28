@@ -11,11 +11,13 @@ from shapely.geometry import MultiPolygon
 from structures_pipeline.constants import SQM_TO_SQFT
 
 
+# Create an empty GeoDataFrame with a known geometry column and CRS.
 def empty_gdf(columns: Iterable[str] = (), crs: str = "EPSG:4326") -> gpd.GeoDataFrame:
     """Create an empty GeoDataFrame with a known geometry column and CRS."""
     return gpd.GeoDataFrame({column: [] for column in columns}, geometry=[], crs=crs)
 
 
+# Extract polygonal geometry from mixed/collection inputs and drop lines/points.
 def polygonal_part(geometry):
     """Extract polygonal geometry from mixed/collection inputs and drop lines/points."""
     if geometry is None or geometry.is_empty:
@@ -38,6 +40,7 @@ def polygonal_part(geometry):
     return polygons[0] if len(polygons) == 1 else MultiPolygon(polygons)
 
 
+# Remove empty/invalid geometries and keep only valid polygons or multipolygons.
 def clean_geom(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Remove empty/invalid geometries and keep only valid polygons or multipolygons."""
     if gdf.empty:
@@ -63,6 +66,7 @@ def clean_geom(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return cleaned.reset_index(drop=True)
 
 
+# Return a single clean EPSG:4326 boundary polygon for source clipping.
 def normalize_boundary(boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Return a single clean EPSG:4326 boundary polygon for source clipping."""
     if boundary.empty:
@@ -82,12 +86,14 @@ def normalize_boundary(boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return clean_geom(boundary).reset_index(drop=True)
 
 
+# Return total bounds as plain floats for APIs that reject numpy scalars.
 def bounds_tuple(gdf: gpd.GeoDataFrame) -> tuple[float, float, float, float]:
     """Return total bounds as plain floats for APIs that reject numpy scalars."""
     minx, miny, maxx, maxy = gdf.total_bounds
     return float(minx), float(miny), float(maxx), float(maxy)
 
 
+# Pick a local projected CRS from available data, falling back to CONUS Albers.
 def estimated_projected_crs(*gdfs: gpd.GeoDataFrame):
     """Pick a local projected CRS from available data, falling back to CONUS Albers."""
     for gdf in gdfs:
@@ -98,6 +104,7 @@ def estimated_projected_crs(*gdfs: gpd.GeoDataFrame):
     return "EPSG:5070"
 
 
+# Add footprint area in square meters and square feet using a projected CRS.
 def add_area_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Add footprint area in square meters and square feet using a projected CRS."""
     out = gdf.copy()
@@ -112,6 +119,7 @@ def add_area_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return out
 
 
+# Assign buildings to one place while preserving original footprint geometry.
 def assign_footprints_to_place(
     footprints: gpd.GeoDataFrame,
     boundary: gpd.GeoDataFrame,
@@ -154,6 +162,7 @@ def assign_footprints_to_place(
     ).reset_index(drop=True)
 
 
+# Remove fallback footprints already covered by primary source footprints.
 def dedupe_fallback_footprints(
     primary: gpd.GeoDataFrame,
     fallback: gpd.GeoDataFrame,
@@ -210,6 +219,7 @@ def dedupe_fallback_footprints(
     return fallback.loc[keep].reset_index(drop=True)
 
 
+# Cheaply reduce candidate rows to the boundary bounding box before spatial ops.
 def clip_candidates_to_bbox(gdf: gpd.GeoDataFrame, boundary: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Cheaply reduce candidate rows to the boundary bounding box before spatial ops."""
     if gdf.empty:
@@ -218,6 +228,7 @@ def clip_candidates_to_bbox(gdf: gpd.GeoDataFrame, boundary: gpd.GeoDataFrame) -
     return gdf.cx[minx:maxx, miny:maxy].copy()
 
 
+# Clean geometries, retrying with fixed precision when GEOS raises robustness errors.
 def validate_geometry_or_empty(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Clean geometries, retrying with fixed precision when GEOS raises robustness errors."""
     try:
