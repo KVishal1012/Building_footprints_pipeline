@@ -5,42 +5,7 @@
   "places": [
     {
       "city": "Chennai",
-      "state": "Tamil Nadu",
-      "parcel_source": {
-        "name": "Greater Chennai Corporation approved parcel export",
-        "path": "India/data/raw/parcels_chennai_tamil_nadu_india.gpkg",
-        "field_map": {
-          "ParcelID": [
-            "property_id",
-            "parcel_id",
-            "objectid"
-          ],
-          "ParcelAddress": [
-            "property_address",
-            "address"
-          ],
-          "ParcelLandUse": [
-            "land_use",
-            "property_use"
-          ],
-          "ParcelZoning": [
-            "zoning",
-            "zone"
-          ],
-          "ParcelOwner": [
-            "owner_name",
-            "owner"
-          ],
-          "ParcelAssessedValue": [
-            "assessed_value",
-            "property_value"
-          ],
-          "ParcelYearBuilt": [
-            "year_built",
-            "built_year"
-          ]
-        }
-      }
+      "state": "Tamil Nadu"
     },
     {
       "city": "Bengaluru",
@@ -61,7 +26,7 @@
     "strict_sources": true
   },
   "full_source_overrides": {
-    "use_parcels": true,
+    "use_parcels": false,
     "strict_sources": true
   },
   "scenario_source_config": "India/scenario_sources_multicity.example.json",

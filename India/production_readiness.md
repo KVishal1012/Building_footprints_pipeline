@@ -133,13 +133,19 @@ Run the strict operator release sequence with the committed production config:
   --verification-config India/production_verification.release.json
 ```
 
-The Chennai production config expects an approved Greater Chennai Corporation parcel export at:
+Parcels are intentionally disabled for the current Chennai and Bengaluru release. The deferred Chennai source spec remains available in:
+
+```text
+India/deferred_parcel_sources.example.json
+```
+
+When an approved Greater Chennai Corporation export becomes available, place it at:
 
 ```text
 India/data/raw/parcels_chennai_tamil_nadu_india.gpkg
 ```
 
-Keep that raw export uncommitted. The configured field map accepts common GCC export column variants for parcel ID, address, land use, zoning, owner, assessed value, and year built. Strict execution fails if the configured export is absent.
+Keep that raw export uncommitted. The deferred field map accepts common GCC export column variants for parcel ID, address, land use, zoning, owner, assessed value, and year built. To activate parcel enrichment later, copy the Chennai source object into the production config and set `full_source_overrides.use_parcels=true`.
 
 The release command runs OSM-first diagnostics, full-source canonical structures, one combined Chennai and Bengaluru processing pass, production verification, and writes:
 

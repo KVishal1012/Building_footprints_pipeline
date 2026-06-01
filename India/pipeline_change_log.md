@@ -542,9 +542,9 @@ Current split:
 
 Implemented:
 
-- Configured the strict multi-city production run to read an approved Greater Chennai Corporation parcel export from `India/data/raw/parcels_chennai_tamil_nadu_india.gpkg`.
-- Added explicit GCC parcel attribution and common parcel field aliases to the Chennai place config.
-- Kept the raw parcel export uncommitted; strict execution now fails clearly until the approved export is present.
+- Added a deferred source spec for an approved Greater Chennai Corporation parcel export at `India/data/raw/parcels_chennai_tamil_nadu_india.gpkg`.
+- Recorded explicit GCC parcel attribution and common parcel field aliases in `India/deferred_parcel_sources.example.json`.
+- Kept parcels intentionally disabled for the current release. Parcel enrichment can be activated later without changing the structure schema.
 
 ### Request: Harden Chennai And Bengaluru Release Pipeline
 
