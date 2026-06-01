@@ -270,6 +270,7 @@ class ProcessingPipelineTests(unittest.TestCase):
             {
                 "LayerID": ["l1"],
                 "LayerType": ["urban_planning"],
+                "City": ["Chennai"],
                 "SourceName": ["src"],
                 "Scenario": ["test_scenario"],
                 "geometry": [Point(0.5, 0.5)],
@@ -282,6 +283,7 @@ class ProcessingPipelineTests(unittest.TestCase):
                 "StructureID": ["s1"],
                 "LayerID": ["l1"],
                 "LayerType": ["urban_planning"],
+                "City": ["Chennai"],
                 "SourceName": ["src"],
                 "Scenario": ["test_scenario"],
             }
@@ -291,6 +293,9 @@ class ProcessingPipelineTests(unittest.TestCase):
         self.assertEqual(metrics["total_layer_rows"], 1)
         self.assertEqual(metrics["total_links"], 1)
         self.assertEqual(metrics["unique_linked_structures"], 1)
+        self.assertEqual(metrics["rows_by_city"], {"Chennai": 1})
+        self.assertEqual(metrics["links_by_city"], {"Chennai": 1})
+        self.assertEqual(metrics["unique_linked_structures_by_city"], {"Chennai": 1})
         self.assertAlmostEqual(metrics["link_rate"], 0.5)
         self.assertEqual(metrics["rows_by_prediction_kind"], {})
 

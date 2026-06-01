@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import logging
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -33,9 +35,20 @@ from production_verification import (  # noqa: E402
 
 
 LOGGER = logging.getLogger("india_realworld_sequence")
+DEFAULT_RELEASE_REPORT = INDIA_DIR / "data/reports/latest_release_report.json"
+REQUIRED_SOURCE_PROVENANCE_FIELDS = [
+    "source_authority",
+    "source_family",
+    "provenance_tier",
+    "prediction_kind",
+    "run_id",
+    "city",
+    "state",
+]
 
 
 def load_india_structure_module():
+    """Load the India structure pipeline without importing the root variant."""
     module_path = INDIA_DIR / "structure_pipeline.py"
     spec = importlib.util.spec_from_file_location("india_structure_pipeline", module_path)
     if spec is None or spec.loader is None:
@@ -47,6 +60,7 @@ def load_india_structure_module():
 
 
 def _dict(value, key: str) -> dict:
+    """Read an optional JSON object section and reject malformed config."""
     out = value.get(key, {})
     if out is None:
         return {}
@@ -55,7 +69,31 @@ def _dict(value, key: str) -> dict:
     return dict(out)
 
 
+def _validate_release_sources(sources: list[dict], *, strict: bool) -> None:
+    """Require explicit provenance metadata for strict release processing sources."""
+    if not strict:
+        return
+    for index, source in enumerate(sources):
+        missing = [
+            field
+            for field in REQUIRED_SOURCE_PROVENANCE_FIELDS
+            if not str(source.get(field, "")).strip()
+        ]
+        if missing:
+            raise ValueError(
+                f"Processing source #{index + 1} ({source.get('source_name', 'unnamed')!r}) "
+                f"is missing strict release provenance fields: {missing}"
+            )
+
+
+def _write_release_report(path: Path, report: dict) -> None:
+    """Persist the operator-facing release report as formatted JSON."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2) + "\n")
+
+
 def main() -> None:
+    """Run the Chennai and Bengaluru release sequence from one CLI entrypoint."""
     parser = argparse.ArgumentParser(
         description="Run India pipeline sequence: OSM-first structures, full-source structures, and scenario processing."
     )
@@ -74,6 +112,12 @@ def main() -> None:
         default=None,
         type=Path,
         help="Optional JSON verification config to run after scenario processing.",
+    )
+    parser.add_argument(
+        "--release-report",
+        default=DEFAULT_RELEASE_REPORT,
+        type=Path,
+        help="JSON report written after a non-dry-run release attempt.",
     )
     args = parser.parse_args()
 
@@ -138,6 +182,8 @@ def main() -> None:
         repo_root=REPO_ROOT,
     )
     processing_config = ProcessingConfig(**processing_kwargs)
+    sources = read_source_config(scenario_source_config_path)
+    _validate_release_sources(sources, strict=processing_config.strict_sources)
 
     if args.dry_run:
         LOGGER.info("Validated sequence config for %d place(s)", len(places))
@@ -147,24 +193,68 @@ def main() -> None:
             LOGGER.info("Verification config path: %s", verification_config_path)
         return
 
-    if not args.skip_osm_first:
-        LOGGER.info("Step 1/3: running OSM-first structure pipeline")
-        structure_module.build_many_cities(places, osm_first_config)
-    if not args.skip_full_sources:
-        LOGGER.info("Step 2/3: running full-source structure pipeline")
-        structure_module.build_many_cities(places, full_source_config)
-    if not args.skip_scenarios:
-        LOGGER.info("Step 3/3: running scenario processing pipeline")
-        sources = read_source_config(scenario_source_config_path)
-        run_processing_pipeline(sources, processing_config)
-    if verification_config_path is not None:
-        LOGGER.info("Running production verification with %s", verification_config_path)
-        report = verify_outputs(VerificationConfig.from_json(verification_config_path))
-        if not report["passed"]:
-            raise RuntimeError(
-                "Production verification failed: "
-                + "; ".join(report["errors"])
+    release_report = {
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+        "status": "running",
+        "places": places,
+        "config_path": str(args.config),
+        "scenario_source_config_path": str(scenario_source_config_path),
+        "verification_config_path": (
+            str(verification_config_path) if verification_config_path is not None else None
+        ),
+        "output_paths": {
+            "structures": str(full_source_config.output_dir / "structures_master.parquet"),
+            "processing_layers": str(processing_config.output_dir / "processing_layers.parquet"),
+            "processing_links": str(
+                processing_config.output_dir / "structure_processing_links.parquet"
+            ),
+            "processing_metrics": str(processing_config.metrics_output_path),
+        },
+        "steps": [],
+    }
+    try:
+        if not args.skip_osm_first:
+            LOGGER.info("Step 1/4: running OSM-first diagnostic structure pipeline")
+            structure_module.build_many_cities(places, osm_first_config)
+            release_report["steps"].append({"name": "osm_first_diagnostic", "status": "passed"})
+        if not args.skip_full_sources:
+            LOGGER.info("Step 2/4: running full-source canonical structure pipeline")
+            structure_module.build_many_cities(places, full_source_config)
+            release_report["steps"].append({"name": "full_source_canonical", "status": "passed"})
+        if not args.skip_scenarios:
+            LOGGER.info("Step 3/4: running combined multi-city scenario processing pipeline")
+            run_processing_pipeline(sources, processing_config)
+            release_report["steps"].append({"name": "scenario_processing", "status": "passed"})
+        if processing_config.metrics_output_path.exists():
+            release_report["processing_metrics"] = json.loads(
+                processing_config.metrics_output_path.read_text()
             )
+        if verification_config_path is not None:
+            LOGGER.info("Step 4/4: running production verification with %s", verification_config_path)
+            verification_report = verify_outputs(
+                VerificationConfig.from_json(verification_config_path)
+            )
+            release_report["verification"] = verification_report
+            release_report["steps"].append(
+                {
+                    "name": "production_verification",
+                    "status": "passed" if verification_report["passed"] else "failed",
+                }
+            )
+            if not verification_report["passed"]:
+                raise RuntimeError(
+                    "Production verification failed: "
+                    + "; ".join(verification_report["errors"])
+                )
+        release_report["status"] = "passed"
+    except Exception as exc:
+        release_report["status"] = "failed"
+        release_report["error"] = str(exc)
+        raise
+    finally:
+        release_report["completed_at_utc"] = datetime.now(timezone.utc).isoformat()
+        _write_release_report(args.release_report, release_report)
+        LOGGER.info("Wrote release report to %s", args.release_report)
 
     LOGGER.info("India real-world sequence completed")
 

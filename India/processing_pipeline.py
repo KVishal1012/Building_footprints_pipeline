@@ -578,7 +578,9 @@ def write_processing_outputs(
 def build_processing_metrics(
     layers: gpd.GeoDataFrame, links: pd.DataFrame, structures: gpd.GeoDataFrame
 ) -> dict:
+    """Summarize layer volume and structure-link coverage for release reporting."""
     def counts(frame: pd.DataFrame, column: str) -> dict:
+        """Return value counts for a present column without loading extra frames."""
         if frame.empty or column not in frame.columns:
             return {}
         return frame[column].value_counts(dropna=False).to_dict()
@@ -619,6 +621,7 @@ def build_processing_metrics(
     return {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "total_layer_rows": int(len(layers)),
+        "rows_by_city": counts(layers, "City"),
         "rows_by_source_name": counts(layers, "SourceName"),
         "rows_by_source_family": counts(layers, "SourceFamily"),
         "rows_by_provenance_tier": counts(layers, "ProvenanceTier"),
@@ -626,7 +629,13 @@ def build_processing_metrics(
         "rows_by_layer_type": counts(layers, "LayerType"),
         "rows_by_scenario": {str(k): int(v) for k, v in scenario_layer_counts.items()},
         "total_links": int(len(links)),
+        "links_by_city": counts(links, "City"),
         "unique_linked_structures": unique_linked_structures,
+        "unique_linked_structures_by_city": (
+            links.groupby("City", dropna=False)["StructureID"].nunique().to_dict()
+            if not links.empty and "City" in links.columns
+            else {}
+        ),
         "total_structures": total_structures,
         "link_rate": link_rate,
         "scenario_coverage": scenario_coverage,

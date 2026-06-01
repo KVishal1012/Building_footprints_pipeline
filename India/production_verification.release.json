@@ -15,7 +15,8 @@
         "chennai_tamil_nadu_india_floodplain_lock_in_realworld_v1"
       ],
       "min_authoritative_rows": 0,
-      "min_model_rows": 0
+      "min_model_rows": 0,
+      "authoritative_sources": []
     },
     "Bengaluru": {
       "min_link_rate": 0.0005,
@@ -26,7 +27,8 @@
         "bengaluru_karnataka_india_floodplain_lock_in_realworld_v1"
       ],
       "min_authoritative_rows": 0,
-      "min_model_rows": 0
+      "min_model_rows": 0,
+      "authoritative_sources": []
     }
   }
 }

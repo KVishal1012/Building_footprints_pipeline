@@ -114,6 +114,58 @@ Production verification command:
 
 Add `--dry-run` to validate config, logging, paths, and dataclass fields without running the pipeline.
 
+## Chennai And Bengaluru Release Runbook
+
+Use the multi-city dry run before processing data:
+
+```bash
+.venv/bin/python scripts/run_india_realworld_sequence.py \
+  --config India/realworld_sequence_multicity_config.example.json \
+  --verification-config India/production_verification.release.json \
+  --dry-run
+```
+
+Run the strict operator release sequence with the committed production config:
+
+```bash
+.venv/bin/python scripts/run_india_realworld_sequence.py \
+  --config India/realworld_sequence_multicity.production.json \
+  --verification-config India/production_verification.release.json
+```
+
+The Chennai production config expects an approved Greater Chennai Corporation parcel export at:
+
+```text
+India/data/raw/parcels_chennai_tamil_nadu_india.gpkg
+```
+
+Keep that raw export uncommitted. The configured field map accepts common GCC export column variants for parcel ID, address, land use, zoning, owner, assessed value, and year built. Strict execution fails if the configured export is absent.
+
+The release command runs OSM-first diagnostics, full-source canonical structures, one combined Chennai and Bengaluru processing pass, production verification, and writes:
+
+```text
+India/data/reports/latest_release_report.json
+```
+
+Generate a report-only threshold calibration after a representative run:
+
+```bash
+.venv/bin/python India/production_verification.py \
+  --config India/production_verification.release.json \
+  --calibrate-thresholds \
+  --output-json India/data/reports/link_rate_calibration.json
+```
+
+Review the calibration report and update each committed `min_link_rate` in `India/production_verification.release.json` before promotion. The recommended threshold is deterministic:
+
+```text
+max(0.0005, measured_link_rate * 0.90)
+```
+
+Proxy scenario layers remain allowed only when explicitly labeled with `source_family=heuristic_proxy`, `provenance_tier=heuristic`, and `prediction_kind=heuristic_baseline`. Add a source under `authoritative_sources` in the release verification config when it becomes mandatory for promotion.
+
+Generated raw layers, parquet outputs, reports, caches, `.venv`, and `__pycache__` remain uncommitted.
+
 ## Strict Mode
 
 Default notebook behavior is permissive: optional missing layers are skipped with a message. For production runs, enable strict mode when configured sources are expected to exist:

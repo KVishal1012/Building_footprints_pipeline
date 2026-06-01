@@ -1,4 +1,9 @@
 {
+  "defaults": {
+    "source_family": "heuristic_proxy",
+    "provenance_tier": "heuristic",
+    "prediction_kind": "heuristic_baseline"
+  },
   "sources": [
     {
       "layer_type": "planning_context",

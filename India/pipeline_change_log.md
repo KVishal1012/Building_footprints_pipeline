@@ -536,3 +536,23 @@ Current split:
 
 - Structure pipeline: Overture, Microsoft, OSM, optional NSI/census, optional parcels.
 - Processing pipeline: segmentation, change detection, flood prediction, urban planning, planning context, and other ML/deep-learning outputs.
+## 2026-05-31
+
+### Request: Configure Chennai Parcels
+
+Implemented:
+
+- Configured the strict multi-city production run to read an approved Greater Chennai Corporation parcel export from `India/data/raw/parcels_chennai_tamil_nadu_india.gpkg`.
+- Added explicit GCC parcel attribution and common parcel field aliases to the Chennai place config.
+- Kept the raw parcel export uncommitted; strict execution now fails clearly until the approved export is present.
+
+### Request: Harden Chennai And Bengaluru Release Pipeline
+
+Implemented:
+
+- Extended `scripts/run_india_realworld_sequence.py` into a strict operator release entrypoint with dry-run source validation and `India/data/reports/latest_release_report.json`.
+- Added `India/realworld_sequence_multicity.production.json` and `India/production_verification.release.json`.
+- Labeled multi-city scenario templates as explicit heuristic proxy layers.
+- Added production gates for complete provenance, strict source families, processing geometry, valid structure-link targets, required scenarios, calibrated link rates, and optional required authoritative sources.
+- Added deterministic report-only link-rate calibration using `max(0.0005, measured_link_rate * 0.90)`.
+- Added focused verification and strict multi-city dry-run tests.

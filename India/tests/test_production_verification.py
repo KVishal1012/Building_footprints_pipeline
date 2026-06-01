@@ -12,13 +12,40 @@ from shapely.geometry import Point, box
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from production_verification import (  # noqa: E402
+    AuthoritativeSourceRule,
     CityVerificationRule,
     VerificationConfig,
+    calibrate_thresholds,
     verify_outputs,
 )
 
 
 class ProductionVerificationTests(unittest.TestCase):
+    def _write_outputs(
+        self,
+        tmp: Path,
+        structures: gpd.GeoDataFrame,
+        layers: gpd.GeoDataFrame,
+        links: pd.DataFrame,
+    ) -> VerificationConfig:
+        """Write one complete verification fixture and return its config."""
+        structures_path = tmp / "structures.parquet"
+        layers_path = tmp / "processing_layers.parquet"
+        links_path = tmp / "structure_processing_links.parquet"
+        metrics_path = tmp / "processing_metrics.json"
+        structures.to_parquet(structures_path, index=False)
+        layers.to_parquet(layers_path, index=False)
+        links.to_parquet(links_path, index=False)
+        metrics_path.write_text(json.dumps({"total_layer_rows": len(layers), "total_links": len(links)}))
+        for path in (structures_path, layers_path, links_path):
+            self._write_sidecar(path)
+        return VerificationConfig(
+            structure_path=structures_path,
+            layers_path=layers_path,
+            links_path=links_path,
+            metrics_path=metrics_path,
+        )
+
     def _write_sidecar(self, path: Path) -> None:
         Path(f"{path}.metadata.json").write_text(json.dumps({"dataset": path.name}))
 
@@ -178,6 +205,72 @@ class ProductionVerificationTests(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertTrue(any("below minimum" in error for error in report["errors"]))
         self.assertTrue(any("missing required scenarios" in error for error in report["errors"]))
+
+    def test_verify_outputs_fails_for_incomplete_provenance_and_custom_family(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            structures = gpd.GeoDataFrame(
+                {"StructureID": ["s1"], "City": ["Chennai"]},
+                geometry=[box(80.19, 12.99, 80.21, 13.01)],
+                crs="EPSG:4326",
+            )
+            layers = self._base_layers().iloc[[0]].copy()
+            layers["SourceAuthority"] = ""
+            layers["SourceFamily"] = "custom"
+            links = pd.DataFrame({"StructureID": ["s1"], "City": ["Chennai"]})
+            config = self._write_outputs(tmp, structures, layers, links)
+            report = verify_outputs(config)
+
+        self.assertFalse(report["passed"])
+        self.assertTrue(any("blank SourceAuthority" in error for error in report["errors"]))
+        self.assertTrue(any("strict-mode SourceFamily" in error for error in report["errors"]))
+
+    def test_verify_outputs_fails_for_required_authoritative_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            structures = gpd.GeoDataFrame(
+                {"StructureID": ["s1"], "City": ["Chennai"]},
+                geometry=[box(80.19, 12.99, 80.21, 13.01)],
+                crs="EPSG:4326",
+            )
+            layers = self._base_layers().iloc[[0]].copy()
+            links = pd.DataFrame({"StructureID": ["s1"], "City": ["Chennai"]})
+            config = self._write_outputs(tmp, structures, layers, links)
+            config.cities = {
+                "Chennai": CityVerificationRule(
+                    authoritative_sources=[
+                        AuthoritativeSourceRule(
+                            source_name="missing_municipal_layer",
+                            min_rows=1,
+                        )
+                    ]
+                )
+            }
+            report = verify_outputs(config)
+
+        self.assertFalse(report["passed"])
+        self.assertTrue(any("missing_municipal_layer" in error for error in report["errors"]))
+
+    def test_calibrate_thresholds_uses_ninety_percent_floor(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            structures = gpd.GeoDataFrame(
+                {"StructureID": ["s1", "s2"], "City": ["Chennai", "Chennai"]},
+                geometry=[box(0, 0, 1, 1), box(2, 2, 3, 3)],
+                crs="EPSG:4326",
+            )
+            layers = self._base_layers().iloc[[0]].copy()
+            links = pd.DataFrame({"StructureID": ["s1"], "City": ["Chennai"]})
+            config = self._write_outputs(tmp, structures, layers, links)
+            config.cities = {
+                "Chennai": CityVerificationRule(),
+                "Bengaluru": CityVerificationRule(),
+            }
+            report = calibrate_thresholds(config)
+
+        self.assertEqual(report["cities"]["Chennai"]["measured_link_rate"], 0.5)
+        self.assertEqual(report["cities"]["Chennai"]["recommended_min_link_rate"], 0.45)
+        self.assertEqual(report["cities"]["Bengaluru"]["recommended_min_link_rate"], 0.0005)
 
 
 if __name__ == "__main__":
