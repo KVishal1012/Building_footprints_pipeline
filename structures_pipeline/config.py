@@ -34,6 +34,7 @@ class PipelineConfig:
     sql_export: dict | None = None
     return_dataframe: bool = False
     dataframe_preview_rows: int = 10
+    write_local_outputs: bool = True
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     # Normalize path and optional dict-like settings after dataclass creation.

@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from urllib.parse import parse_qs, unquote_plus, urlparse
 
 import pytest
@@ -7,6 +8,7 @@ from structures_pipeline.sql_server import (
     SqlServerPipelineSettings,
     buffer_meters_from_srid,
     build_sql_server_pipeline_config,
+    run_sql_server_pipeline_from_inputs,
     sql_server_connection_url,
 )
 
@@ -71,3 +73,46 @@ def test_build_sql_server_pipeline_config_sets_baseline_and_export():
     assert config.sql_baseline_source["sqlserver_geometry_methods"] is True
     assert config.sql_export["table"] == "dbo.StructuresOutput"
     assert config.return_dataframe is True
+    assert config.write_local_outputs is False
+
+
+def test_run_sql_server_pipeline_from_inputs_uses_module_functions(monkeypatch):
+    settings = SqlServerPipelineSettings(
+        server_name="localhost",
+        database_name="gis",
+        output_table="dbo.StructuresOutput",
+        baseline_table="dbo.AssetBaseline",
+        baseline_buffer_value=100,
+        trusted_connection=True,
+    )
+    input_module = SimpleNamespace(
+        get_settings=lambda: settings,
+        get_target=lambda: {
+            "place_specs": [{"city": "Houston", "state": "Texas"}],
+            "state_filters": None,
+            "all_us_cities": False,
+        },
+        get_pipeline_overrides=lambda: {"download_missing": False},
+    )
+    captured = {}
+
+    def fake_run_pipeline(*, place_specs, state_filters, all_us_cities, config):
+        captured["place_specs"] = place_specs
+        captured["state_filters"] = state_filters
+        captured["all_us_cities"] = all_us_cities
+        captured["config"] = config
+        return {"dataframe": "df", "sql_export": {"rows_exported": 1}}
+
+    monkeypatch.setattr("structures_pipeline.sql_server.run_pipeline", fake_run_pipeline)
+
+    result = run_sql_server_pipeline_from_inputs(input_module)
+
+    assert result["sql_export"]["rows_exported"] == 1
+    assert captured["place_specs"] == [{"city": "Houston", "state": "Texas"}]
+    assert captured["config"].download_missing is False
+    assert captured["config"].sql_export["table"] == "dbo.StructuresOutput"
+
+
+def test_run_sql_server_pipeline_from_inputs_requires_contract():
+    with pytest.raises(ValueError, match="get_settings"):
+        run_sql_server_pipeline_from_inputs(SimpleNamespace())

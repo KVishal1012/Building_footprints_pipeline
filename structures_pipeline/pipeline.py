@@ -224,12 +224,13 @@ def build_places(
             config=config,
             overture_release=overture_release,
             parcel_source=source,
-            write_output=True,
+            write_output=config.write_local_outputs,
         )
         if keep_dataframe:
             frames.append(city_frame)
         metrics.append(city_metrics)
-        city_paths.append(Path(city_metrics["output_path"]))
+        if config.write_local_outputs:
+            city_paths.append(Path(city_metrics["output_path"]))
 
     final_dataframe = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
     if keep_dataframe and frames:
@@ -239,17 +240,21 @@ def build_places(
             crs=frames[0].crs or "EPSG:4326",
         )
 
-    master_path = write_master_dataset(city_paths, config)
-    qa_path = config.qa_dir / "city_metrics.parquet"
-    write_city_metrics(metrics, qa_path)
-    manifest_path = write_manifest(
-        config,
-        places=places,
-        metrics=metrics,
-        city_paths=city_paths,
-        master_path=master_path,
-        overture_release=overture_release,
-    )
+    master_path = None
+    qa_path = None
+    manifest_path = None
+    if config.write_local_outputs:
+        master_path = write_master_dataset(city_paths, config)
+        qa_path = config.qa_dir / "city_metrics.parquet"
+        write_city_metrics(metrics, qa_path)
+        manifest_path = write_manifest(
+            config,
+            places=places,
+            metrics=metrics,
+            city_paths=city_paths,
+            master_path=master_path,
+            overture_release=overture_release,
+        )
     sql_export_result = None
     if config.sql_export:
         sql_export_result = export_dataframe_to_sql_server(final_dataframe, config.sql_export)

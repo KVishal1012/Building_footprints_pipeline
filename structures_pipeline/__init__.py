@@ -9,6 +9,7 @@ from structures_pipeline.sql_server import (
     SqlServerPipelineSettings,
     build_sql_server_pipeline_config,
     run_sql_server_pipeline,
+    run_sql_server_pipeline_from_inputs,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "SqlServerPipelineSettings",
     "build_sql_server_pipeline_config",
     "run_sql_server_pipeline",
+    "run_sql_server_pipeline_from_inputs",
 ]

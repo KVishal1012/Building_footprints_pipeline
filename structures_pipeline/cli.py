@@ -87,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--state", action="append", help="State abbreviation or name. Can be passed multiple times.")
     target.add_argument("--all-us-cities", action="store_true", help="Run all Census places in the 50 states plus DC.")
     parser.add_argument("--output-dir", default="data/output")
+    parser.add_argument(
+        "--no-local-outputs",
+        action="store_true",
+        help="Skip city parquet, master parquet, QA parquet, and manifest JSON outputs.",
+    )
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--raw-dir", default="data/raw")
     parser.add_argument("--cache-dir", default="cache")
@@ -191,6 +196,7 @@ def main(argv: list[str] | None = None) -> None:
         sql_export=sql_export,
         return_dataframe=args.show_dataframe,
         dataframe_preview_rows=args.dataframe_preview_rows,
+        write_local_outputs=not args.no_local_outputs,
         parcel_sources=dict(args.parcel_source),
     )
     result = run_pipeline(
@@ -199,7 +205,10 @@ def main(argv: list[str] | None = None) -> None:
         all_us_cities=args.all_us_cities,
         config=config,
     )
-    logging.getLogger(__name__).info("Wrote manifest: %s", result["manifest_path"])
+    if result.get("manifest_path"):
+        logging.getLogger(__name__).info("Wrote manifest: %s", result["manifest_path"])
+    else:
+        logging.getLogger(__name__).info("Skipped local parquet/json outputs")
     if args.show_dataframe:
         dataframe = result.get("dataframe")
         if dataframe is not None:

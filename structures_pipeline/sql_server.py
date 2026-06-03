@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import ModuleType
 from urllib.parse import quote_plus
 
 from structures_pipeline.config import PipelineConfig
@@ -49,6 +50,7 @@ class SqlServerPipelineSettings:
     output_geometry_column: str = "geometry_wkt"
     output_chunksize: int = 1000
     buffer_unit_to_meters: float | None = None
+    write_local_outputs: bool = False
 
 
 # Convert a source-SRID buffer distance to meters for the pipeline buffer step.
@@ -125,6 +127,7 @@ def build_sql_server_pipeline_config(
             "chunksize": settings.output_chunksize,
         },
         return_dataframe=True,
+        write_local_outputs=settings.write_local_outputs,
     )
 
 
@@ -144,4 +147,22 @@ def run_sql_server_pipeline(
         state_filters=state_filters,
         all_us_cities=all_us_cities,
         config=config,
+    )
+
+
+# Run from a Python input module with get_settings/get_target/get_pipeline_overrides.
+def run_sql_server_pipeline_from_inputs(input_module: ModuleType) -> dict:
+    """Run from a Python input module with get_settings/get_target/get_pipeline_overrides."""
+    for function_name in ("get_settings", "get_target", "get_pipeline_overrides"):
+        if not hasattr(input_module, function_name):
+            raise ValueError(f"Input module is missing required function: {function_name}")
+    settings = input_module.get_settings()
+    target = dict(input_module.get_target())
+    overrides = dict(input_module.get_pipeline_overrides())
+    return run_sql_server_pipeline(
+        settings,
+        place_specs=target.get("place_specs"),
+        state_filters=target.get("state_filters"),
+        all_us_cities=bool(target.get("all_us_cities", False)),
+        **overrides,
     )

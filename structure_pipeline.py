@@ -9,6 +9,7 @@ from structures_pipeline import (
     build_places,
     run_pipeline,
     run_sql_server_pipeline,
+    run_sql_server_pipeline_from_inputs,
 )
 from structures_pipeline.cli import main
 from structures_pipeline.pipeline import parse_place_arg as parse_place
@@ -22,6 +23,7 @@ __all__ = [
     "build_places",
     "run_pipeline",
     "run_sql_server_pipeline",
+    "run_sql_server_pipeline_from_inputs",
     "parse_place",
     "main",
 ]

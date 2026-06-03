@@ -71,6 +71,7 @@ To view the final output as a dataframe in Python and export it as the last step
 ```bash
 python structure_pipeline.py \
   --place "Chicago, Illinois" \
+  --no-local-outputs \
   --show-dataframe \
   --dataframe-preview-rows 20 \
   --export-sqlserver-table dbo.StructuresOutput \
@@ -85,6 +86,7 @@ from structures_pipeline.pipeline import run_pipeline
 
 config = PipelineConfig(
     return_dataframe=True,
+    write_local_outputs=False,
     sql_export={
         "connection_env": "STRUCTURES_SQLSERVER_URL",
         "table": "dbo.StructuresOutput",
@@ -98,6 +100,28 @@ print(df.head())
 ```
 
 For SQL Server-only runs, use the dedicated module to specify server name, database name, baseline table, output table, SRID, and buffer in one place:
+
+Create a local input module:
+
+```bash
+cp sql_server_inputs.example.py sql_server_inputs.py
+```
+
+Edit `sql_server_inputs.py`, then run:
+
+```bash
+python scripts/run_sql_server_pipeline.py
+```
+
+The local `sql_server_inputs.py` file is ignored by Git so server names and credentials do not get committed. The runner reads:
+
+- `PLACE_SPECS`, `STATE_FILTERS`, or `ALL_US_CITIES`
+- `SQL_SERVER`
+- `BASELINE`
+- `OUTPUT`
+- `PIPELINE_OVERRIDES`
+
+You can also call the SQL Server module directly from Python:
 
 ```python
 from structures_pipeline.sql_server import (
@@ -128,11 +152,13 @@ print(df.head())
 
 `baseline_buffer_value` is converted to meters before the pipeline buffers the baseline. EPSG:4326 and EPSG:4269 are treated as meter-based SQL Server geography buffers, common US-foot SRIDs are converted to meters, and `buffer_unit_to_meters` can be set for any custom SRID.
 
+The SQL Server module defaults to table-only mode and does not write local JSON or parquet outputs. For CLI runs, use `--no-local-outputs` to skip city parquet, master parquet, QA parquet, and manifest JSON files.
+
 Use `--no-download` to force cached local files only. Use `--use-osm` only for small/debug runs because OSM enrichment calls Overpass through OSMnx.
 
 ## Outputs
 
-For each city, the pipeline writes:
+When local outputs are enabled, the pipeline writes:
 
 - City GeoParquet: `data/output/cities/{statefp}/{place_geoid}_{city_slug}_structures.parquet`
 - Master dataset: `data/output/structures_master/structures_master.parquet`

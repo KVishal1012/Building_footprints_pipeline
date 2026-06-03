@@ -19,6 +19,9 @@ env/
 .idea/
 .vscode/
 
+# Local SQL Server run inputs with server names and credentials
+sql_server_inputs.py
+
 # Pipeline data and generated outputs
 cache/
 data/raw/
