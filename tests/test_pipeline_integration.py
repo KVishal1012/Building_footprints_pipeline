@@ -1,3 +1,5 @@
+import sqlite3
+
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import box
@@ -57,6 +59,12 @@ def test_two_city_run_writes_outputs(monkeypatch, tmp_path):
         download_missing=False,
         use_nsi=False,
         use_census=True,
+        return_dataframe=True,
+        sql_export={
+            "connection": f"sqlite:///{tmp_path / 'export.sqlite'}",
+            "table": "structures_out",
+            "if_exists": "replace",
+        },
     )
 
     result = build_places(places, config=config)
@@ -66,3 +74,8 @@ def test_two_city_run_writes_outputs(monkeypatch, tmp_path):
     assert result["master_path"].exists()
     assert result["qa_path"].exists()
     assert result["manifest_path"].exists()
+    assert len(result["dataframe"]) == 2
+    assert result["sql_export"]["rows_exported"] == 2
+    with sqlite3.connect(tmp_path / "export.sqlite") as conn:
+        count = conn.execute("SELECT COUNT(*) FROM structures_out").fetchone()[0]
+    assert count == 2

@@ -16,6 +16,7 @@ from structures_pipeline.sources import (
     attach_osm_attributes,
     attach_baseline_proximity,
     buffered_baseline_boundary,
+    export_dataframe_to_sql_server,
     get_acs_household_size,
     get_nsi_structures,
     get_osm_buildings,
@@ -211,20 +212,32 @@ def build_places(
     overture_release = resolve_overture_release(config)
     metrics: list[dict] = []
     city_paths: list[Path] = []
+    frames: list[gpd.GeoDataFrame] = []
+    keep_dataframe = bool(config.return_dataframe or config.sql_export)
 
     for _, place in places.iterrows():
         source = None
         if parcel_sources:
             source = parcel_sources.get(str(place["PlaceGEOID"])) or parcel_sources.get(place_slug(place))
-        _, city_metrics = build_place_structures(
+        city_frame, city_metrics = build_place_structures(
             place,
             config=config,
             overture_release=overture_release,
             parcel_source=source,
             write_output=True,
         )
+        if keep_dataframe:
+            frames.append(city_frame)
         metrics.append(city_metrics)
         city_paths.append(Path(city_metrics["output_path"]))
+
+    final_dataframe = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+    if keep_dataframe and frames:
+        final_dataframe = gpd.GeoDataFrame(
+            pd.concat(frames, ignore_index=True),
+            geometry="geometry",
+            crs=frames[0].crs or "EPSG:4326",
+        )
 
     master_path = write_master_dataset(city_paths, config)
     qa_path = config.qa_dir / "city_metrics.parquet"
@@ -237,13 +250,21 @@ def build_places(
         master_path=master_path,
         overture_release=overture_release,
     )
-    return {
+    sql_export_result = None
+    if config.sql_export:
+        sql_export_result = export_dataframe_to_sql_server(final_dataframe, config.sql_export)
+
+    result = {
         "city_paths": city_paths,
         "master_path": master_path,
         "qa_path": qa_path,
         "manifest_path": manifest_path,
         "metrics": metrics,
+        "sql_export": sql_export_result,
     }
+    if keep_dataframe:
+        result["dataframe"] = final_dataframe
+    return result
 
 
 # Resolve CLI target selectors and run the pipeline for the selected places.

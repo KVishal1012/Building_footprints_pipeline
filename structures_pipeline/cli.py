@@ -37,6 +37,7 @@ def parse_sql_source_args(args: argparse.Namespace) -> dict | None:
         "where": args.sql_where,
         "crs": args.sql_crs,
         "source_name": args.sql_source_name,
+        "sqlserver_geometry_methods": args.sqlserver_geometry_methods,
     }
 
 
@@ -62,6 +63,21 @@ def parse_sql_baseline_args(args: argparse.Namespace) -> dict | None:
     }
 
 
+# Convert SQL Server export CLI arguments into an optional export dictionary.
+def parse_sql_export_args(args: argparse.Namespace) -> dict | None:
+    """Convert SQL Server export CLI arguments into an optional export dictionary."""
+    if not args.export_sqlserver_table:
+        return None
+    return {
+        "connection_env": args.export_sqlserver_connection_env,
+        "table": args.export_sqlserver_table,
+        "if_exists": args.export_sqlserver_if_exists,
+        "geometry_column": args.export_sqlserver_geometry_column,
+        "chunksize": args.export_sqlserver_chunksize,
+        "fast_executemany": not args.no_export_fast_executemany,
+    }
+
+
 # Build the command-line parser for production and debug pipeline runs.
 def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser for production and debug pipeline runs."""
@@ -81,8 +97,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-overture", action="store_true")
     parser.add_argument("--no-microsoft", action="store_true")
     parser.add_argument("--no-sql", action="store_true")
-    parser.add_argument("--sql-connection-env", default="STRUCTURES_SQL_URL")
-    parser.add_argument("--sql-table", help="SQL table/view to read structure geometries from.")
+    parser.add_argument("--sql-connection-env", default="STRUCTURES_SQLSERVER_URL")
+    parser.add_argument("--sql-table", help="SQL Server table/view to read structure geometries from.")
     parser.add_argument("--sql-query", help="SQL SELECT query to read structure geometries from.")
     parser.add_argument("--sql-geom-column", default="geom", help="Geometry column returned by the SQL source.")
     parser.add_argument("--sql-id-column", help="Stable ID column in the SQL source.")
@@ -92,7 +108,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sql-where", help="Optional WHERE clause used with --sql-table.")
     parser.add_argument("--sql-crs", default="EPSG:4326", help="CRS for SQL geometries when the source does not provide one.")
     parser.add_argument("--sql-source-name", default="sql", help="Label recorded in FootprintSource for SQL rows.")
-    parser.add_argument("--baseline-sql-connection-env", default="STRUCTURES_SQL_URL")
+    parser.add_argument(
+        "--sqlserver-geometry-methods",
+        action="store_true",
+        help="Read SQL Server geometry/geography via STAsBinary() and STSrid when using --sql-table.",
+    )
+    parser.add_argument("--baseline-sql-connection-env", default="STRUCTURES_SQLSERVER_URL")
     parser.add_argument("--baseline-sql-table", help="SQL Server baseline table/view used to build a buffered AOI.")
     parser.add_argument("--baseline-sql-query", help="SQL SELECT query that returns baseline geometries.")
     parser.add_argument("--baseline-sql-geom-column", default="geom", help="Baseline geometry column.")
@@ -105,6 +126,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Read SQL Server geometry/geography via STAsBinary() and STSrid when using --baseline-sql-table.",
     )
+    parser.add_argument(
+        "--show-dataframe",
+        action="store_true",
+        help="Keep the final output in memory and print a pandas-style dataframe preview.",
+    )
+    parser.add_argument("--dataframe-preview-rows", type=int, default=10)
+    parser.add_argument("--export-sqlserver-table", help="Final SQL Server output table as table or schema.table.")
+    parser.add_argument("--export-sqlserver-connection-env", default="STRUCTURES_SQLSERVER_URL")
+    parser.add_argument(
+        "--export-sqlserver-if-exists",
+        choices=["fail", "replace", "append"],
+        default="fail",
+        help="Behavior when the final SQL Server output table already exists.",
+    )
+    parser.add_argument("--export-sqlserver-geometry-column", default="geometry_wkt")
+    parser.add_argument("--export-sqlserver-chunksize", type=int, default=1000)
+    parser.add_argument("--no-export-fast-executemany", action="store_true")
     parser.add_argument("--use-osm", action="store_true")
     parser.add_argument("--no-nsi", action="store_true")
     parser.add_argument("--no-census", action="store_true")
@@ -131,6 +169,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     sql_source = parse_sql_source_args(args)
     sql_baseline_source = parse_sql_baseline_args(args)
+    sql_export = parse_sql_export_args(args)
     config = PipelineConfig(
         data_dir=args.data_dir,
         output_dir=args.output_dir,
@@ -149,6 +188,9 @@ def main(argv: list[str] | None = None) -> None:
         use_parcels=not args.no_parcels,
         sql_footprint_source=sql_source,
         sql_baseline_source=sql_baseline_source,
+        sql_export=sql_export,
+        return_dataframe=args.show_dataframe,
+        dataframe_preview_rows=args.dataframe_preview_rows,
         parcel_sources=dict(args.parcel_source),
     )
     result = run_pipeline(
@@ -158,3 +200,9 @@ def main(argv: list[str] | None = None) -> None:
         config=config,
     )
     logging.getLogger(__name__).info("Wrote manifest: %s", result["manifest_path"])
+    if args.show_dataframe:
+        dataframe = result.get("dataframe")
+        if dataframe is not None:
+            print(dataframe.head(args.dataframe_preview_rows).to_string(index=False))
+    if result.get("sql_export"):
+        logging.getLogger(__name__).info("Exported SQL Server table: %s", result["sql_export"])

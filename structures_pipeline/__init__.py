@@ -5,6 +5,11 @@ from structures_pipeline.pipeline import (
     build_places,
     run_pipeline,
 )
+from structures_pipeline.sql_server import (
+    SqlServerPipelineSettings,
+    build_sql_server_pipeline_config,
+    run_sql_server_pipeline,
+)
 
 __all__ = [
     "PipelineConfig",
@@ -12,4 +17,7 @@ __all__ = [
     "build_many_cities",
     "build_places",
     "run_pipeline",
+    "SqlServerPipelineSettings",
+    "build_sql_server_pipeline_config",
+    "run_sql_server_pipeline",
 ]

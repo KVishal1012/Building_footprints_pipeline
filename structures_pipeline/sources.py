@@ -127,8 +127,11 @@ def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
     query = source.get("query")
     if table and query:
         raise ValueError("SQL source can use table or query, not both")
+    use_sqlserver_methods = bool(source.get("sqlserver_geometry_methods"))
     if query:
         sql = str(query)
+    elif table and use_sqlserver_methods:
+        sql = _sqlserver_geometry_select(source)
     elif table:
         columns = list(source.get("columns") or [])
         if not columns and any(
@@ -161,11 +164,18 @@ def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
     with engine.connect() as conn:
         df = pd.read_sql_query(text(sql), conn)
     geom_column = source.get("geom_column", "geom")
+    if use_sqlserver_methods and not query:
+        geom_column = "geometry_wkb"
     if geom_column not in df.columns:
         raise ValueError(f"SQL source is missing geometry column: {geom_column}")
     geometry = df.pop(geom_column).map(_decode_sql_geometry)
     crs = source.get("crs", "EPSG:4326")
-    return gpd.GeoDataFrame(df, geometry=geometry, crs=crs)
+    gdf = gpd.GeoDataFrame(df, geometry=geometry, crs=crs)
+    if "geometry_srid" in gdf.columns:
+        srid = pd.to_numeric(gdf.pop("geometry_srid"), errors="coerce").dropna()
+        if not srid.empty and srid.iloc[0]:
+            gdf = gdf.set_crs(f"EPSG:{int(srid.iloc[0])}", allow_override=True)
+    return gdf
 
 
 # Validate and quote a dotted SQL Server identifier such as schema.table.
@@ -179,6 +189,104 @@ def _sqlserver_name(name: str) -> str:
     return ".".join(f"[{part}]" for part in parts)
 
 
+# Build a SQL Server SELECT that converts geometry/geography columns to WKB.
+def _sqlserver_geometry_select(source: dict) -> str:
+    """Build a SQL Server SELECT that converts geometry/geography columns to WKB."""
+    table = source.get("table")
+    if not table:
+        raise ValueError("SQL Server geometry source requires table")
+    geom_column = source.get("geom_column", "geom")
+    select_parts = [
+        f"{_sqlserver_name(geom_column)}.STAsBinary() AS geometry_wkb",
+        f"{_sqlserver_name(geom_column)}.STSrid AS geometry_srid",
+    ]
+    for column in source.get("columns") or []:
+        if column != geom_column:
+            select_parts.append(f"{_sqlserver_name(column)} AS {_sqlserver_name(column)}")
+    for key in (
+        "id_column",
+        "structure_type_column",
+        "height_column",
+        "stories_column",
+    ):
+        column = source.get(key)
+        if column and column != geom_column and column not in (source.get("columns") or []):
+            select_parts.append(f"{_sqlserver_name(column)} AS {_sqlserver_name(column)}")
+    where = f" WHERE {source.get('where')}" if source.get("where") else ""
+    return f"SELECT {', '.join(select_parts)} FROM {_sqlserver_name(table)}{where}"
+
+
+# Split an optional schema-qualified table name for pandas to_sql.
+def _sql_table_parts(table: str) -> tuple[str | None, str]:
+    """Split an optional schema-qualified table name for pandas to_sql."""
+    parts = [part.strip() for part in table.split(".") if part.strip()]
+    if not parts or len(parts) > 2:
+        raise ValueError("SQL export table must be table or schema.table")
+    if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_@$#]*", part) for part in parts):
+        raise ValueError(f"Unsafe SQL export table identifier: {table}")
+    return (parts[0], parts[1]) if len(parts) == 2 else (None, parts[0])
+
+
+# Convert a GeoDataFrame into rows that can be inserted by pandas/SQLAlchemy.
+def dataframe_for_sql_export(
+    gdf: gpd.GeoDataFrame,
+    geometry_column: str = "geometry_wkt",
+) -> pd.DataFrame:
+    """Convert a GeoDataFrame into rows that can be inserted by pandas/SQLAlchemy."""
+    frame = pd.DataFrame(gdf.drop(columns=[gdf.geometry.name], errors="ignore")).copy()
+    geometry = gdf.geometry
+    if gdf.crs and gdf.crs.to_epsg() != 4326:
+        geometry = gdf.to_crs(epsg=4326).geometry
+    frame[geometry_column] = geometry.to_wkt()
+    return frame
+
+
+# Export the final structure dataframe to a SQL Server-compatible table.
+def export_dataframe_to_sql_server(
+    gdf: gpd.GeoDataFrame,
+    export_config: dict,
+) -> dict:
+    """Export the final structure dataframe to a SQL Server-compatible table."""
+    try:
+        from sqlalchemy import create_engine
+    except ImportError as exc:
+        raise RuntimeError("sqlalchemy is required for SQL Server export") from exc
+
+    table = export_config.get("table")
+    if not table:
+        raise ValueError("SQL Server export requires table")
+    connection = export_config.get("connection")
+    connection_env = export_config.get("connection_env") or "STRUCTURES_SQLSERVER_URL"
+    if not connection:
+        connection = os.environ.get(connection_env)
+    if not connection:
+        raise RuntimeError(
+            f"Missing SQL Server export connection string. Set {connection_env} or pass connection in config."
+        )
+
+    schema, table_name = _sql_table_parts(table)
+    geometry_column = export_config.get("geometry_column") or "geometry_wkt"
+    frame = dataframe_for_sql_export(gdf, geometry_column=geometry_column)
+    engine_kwargs = {}
+    if str(connection).lower().startswith("mssql") and export_config.get("fast_executemany", True):
+        engine_kwargs["fast_executemany"] = True
+    engine = create_engine(connection, **engine_kwargs)
+    frame.to_sql(
+        table_name,
+        engine,
+        schema=schema,
+        if_exists=export_config.get("if_exists", "fail"),
+        index=False,
+        chunksize=int(export_config.get("chunksize") or 1000),
+    )
+    return {
+        "table": table,
+        "rows_exported": int(len(frame)),
+        "geometry_column": geometry_column,
+        "if_exists": export_config.get("if_exists", "fail"),
+    }
+
+
 # Read baseline geometries and keep only BaselineID plus geometry.
 def read_sql_baseline_source(source: dict, config: PipelineConfig) -> gpd.GeoDataFrame:
     """Read baseline geometries and keep only BaselineID plus geometry."""
@@ -187,22 +295,18 @@ def read_sql_baseline_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
     geom_column = source.get("geom_column", "geom")
     use_sqlserver_methods = bool(source.get("sqlserver_geometry_methods"))
     if table and not query and use_sqlserver_methods:
-        id_column = source.get("id_column")
-        id_select = f", {_sqlserver_name(id_column)} AS BaselineID" if id_column else ""
-        where = f" WHERE {source.get('where')}" if source.get("where") else ""
         baseline_source = dict(source)
-        baseline_source["query"] = (
-            f"SELECT {_sqlserver_name(geom_column)}.STAsBinary() AS geometry_wkb, "
-            f"{_sqlserver_name(geom_column)}.STSrid AS geometry_srid{id_select} "
-            f"FROM {_sqlserver_name(table)}{where}"
-        )
+        if source.get("id_column"):
+            baseline_source["columns"] = [source["id_column"]]
+        baseline_source["query"] = _sqlserver_geometry_select(baseline_source)
+        if source.get("id_column"):
+            baseline_source["query"] = baseline_source["query"].replace(
+                f" AS {_sqlserver_name(source['id_column'])}",
+                " AS BaselineID",
+            )
         baseline_source.pop("table", None)
         baseline_source["geom_column"] = "geometry_wkb"
         raw = read_sql_geometry_source(baseline_source, config)
-        if "geometry_srid" in raw.columns:
-            srid = pd.to_numeric(raw.pop("geometry_srid"), errors="coerce").dropna()
-            if not srid.empty and srid.iloc[0]:
-                raw = raw.set_crs(f"EPSG:{int(srid.iloc[0])}", allow_override=True)
     else:
         raw = read_sql_geometry_source(source, config)
 

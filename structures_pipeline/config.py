@@ -31,6 +31,9 @@ class PipelineConfig:
     cache_remote_parcels: bool = True
     sql_footprint_source: dict | None = None
     sql_baseline_source: dict | None = None
+    sql_export: dict | None = None
+    return_dataframe: bool = False
+    dataframe_preview_rows: int = 10
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     # Normalize path and optional dict-like settings after dataclass creation.
@@ -42,6 +45,7 @@ class PipelineConfig:
         self.cache_dir = Path(self.cache_dir)
         self.sql_footprint_source = dict(self.sql_footprint_source or {})
         self.sql_baseline_source = dict(self.sql_baseline_source or {})
+        self.sql_export = dict(self.sql_export or {})
         self.parcel_sources = dict(self.parcel_sources)
 
     # Directory for per-place GeoParquet outputs partitioned by state FIPS.

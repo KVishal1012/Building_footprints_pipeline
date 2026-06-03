@@ -38,24 +38,24 @@ python structure_pipeline.py \
   --parcel-source 1714000=/path/to/parcels.gpkg
 ```
 
-A SQL table or query with a geometry column can be used as a footprint source. Store the SQLAlchemy connection string in an environment variable so credentials stay out of command history:
+A SQL Server table or query with a geometry/geography column can be used as a footprint source. Store the SQLAlchemy connection string in an environment variable so credentials stay out of command history:
 
 ```bash
-export STRUCTURES_SQL_URL='postgresql+psycopg2://user:password@host:5432/dbname'
+export STRUCTURES_SQLSERVER_URL='mssql+pyodbc:///?odbc_connect=Driver%3D%7BODBC+Driver+18+for+SQL+Server%7D%3BServer%3Dtcp%3Aserver.example.com%2C1433%3BDatabase%3Dgis%3BUID%3Duser%3BPWD%3Dpassword%3BEncrypt%3Dyes'
 python structure_pipeline.py \
   --place "Chicago, Illinois" \
-  --sql-table public.building_footprints \
-  --sql-geom-column geom \
-  --sql-id-column building_id \
-  --sql-structure-type-column use_type
+  --sql-table dbo.BuildingFootprints \
+  --sql-geom-column Shape \
+  --sql-id-column BuildingID \
+  --sql-structure-type-column UseType \
+  --sqlserver-geometry-methods
 ```
 
-For databases that do not return geometry as WKB/WKT directly, pass a query that aliases the geometry to `geom`, for example `ST_AsBinary(geom) AS geom`.
+For custom SQL Server queries, return a WKB/WKT geometry column and alias it to the configured `--sql-geom-column`.
 
 A SQL Server baseline table can also define the area of interest. The pipeline reads the baseline geometry, buffers it in meters, captures structures around that buffer, and writes `BaselineID`, `BaselineDistance_m`, and `BaselineBuffer_m` to the output:
 
 ```bash
-export STRUCTURES_SQL_URL='mssql+pyodbc:///?odbc_connect=Driver%3D%7BODBC+Driver+18+for+SQL+Server%7D%3BServer%3Dtcp%3Aserver.example.com%2C1433%3BDatabase%3Dgis%3BUID%3Duser%3BPWD%3Dpassword%3BEncrypt%3Dyes'
 python structure_pipeline.py \
   --place "Houston, Texas" \
   --baseline-sql-table dbo.AssetBaseline \
@@ -65,6 +65,68 @@ python structure_pipeline.py \
   --baseline-sql-where "Status = 'Active'" \
   --baseline-sqlserver-geometry-methods
 ```
+
+To view the final output as a dataframe in Python and export it as the last step to SQL Server, enable the dataframe preview and provide an output table. The SQL export writes geometry as WKT by default in `geometry_wkt`.
+
+```bash
+python structure_pipeline.py \
+  --place "Chicago, Illinois" \
+  --show-dataframe \
+  --dataframe-preview-rows 20 \
+  --export-sqlserver-table dbo.StructuresOutput \
+  --export-sqlserver-if-exists append
+```
+
+The same final dataframe is available directly from Python:
+
+```python
+from structures_pipeline.config import PipelineConfig
+from structures_pipeline.pipeline import run_pipeline
+
+config = PipelineConfig(
+    return_dataframe=True,
+    sql_export={
+        "connection_env": "STRUCTURES_SQLSERVER_URL",
+        "table": "dbo.StructuresOutput",
+        "if_exists": "append",
+    },
+)
+
+result = run_pipeline(place_specs=[{"city": "Chicago", "state": "Illinois"}], config=config)
+df = result["dataframe"]
+print(df.head())
+```
+
+For SQL Server-only runs, use the dedicated module to specify server name, database name, baseline table, output table, SRID, and buffer in one place:
+
+```python
+from structures_pipeline.sql_server import (
+    SqlServerPipelineSettings,
+    run_sql_server_pipeline,
+)
+
+settings = SqlServerPipelineSettings(
+    server_name="tcp:server.example.com,1433",
+    database_name="gis",
+    baseline_table="dbo.AssetBaseline",
+    baseline_geom_column="Shape",
+    baseline_id_column="AssetID",
+    baseline_buffer_value=250,
+    baseline_srid=4326,
+    output_table="dbo.StructuresOutput",
+    username="user",
+    password="password",
+)
+
+result = run_sql_server_pipeline(
+    settings,
+    place_specs=[{"city": "Houston", "state": "Texas"}],
+)
+df = result["dataframe"]
+print(df.head())
+```
+
+`baseline_buffer_value` is converted to meters before the pipeline buffers the baseline. EPSG:4326 and EPSG:4269 are treated as meter-based SQL Server geography buffers, common US-foot SRIDs are converted to meters, and `buffer_unit_to_meters` can be set for any custom SRID.
 
 Use `--no-download` to force cached local files only. Use `--use-osm` only for small/debug runs because OSM enrichment calls Overpass through OSMnx.
 

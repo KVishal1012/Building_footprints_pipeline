@@ -6,8 +6,11 @@ from shapely.geometry import Point, box
 
 from structures_pipeline.config import PipelineConfig
 from structures_pipeline.sources import (
+    _sqlserver_geometry_select,
     attach_baseline_proximity,
     buffered_baseline_boundary,
+    dataframe_for_sql_export,
+    export_dataframe_to_sql_server,
     load_sql_footprints,
     read_sql_baseline_source,
     read_sql_geometry_source,
@@ -117,3 +120,59 @@ def test_sql_baseline_source_buffers_and_tags_nearest_structure(tmp_path):
     assert tagged.iloc[0]["BaselineID"] == "asset-1"
     assert tagged.iloc[0]["BaselineBuffer_m"] == 100
     assert tagged.iloc[0]["BaselineDistance_m"] >= 0
+
+
+def test_sqlserver_geometry_select_uses_spatial_methods():
+    sql = _sqlserver_geometry_select(
+        {
+            "table": "dbo.Footprints",
+            "geom_column": "Shape",
+            "id_column": "BuildingID",
+            "structure_type_column": "UseType",
+            "where": "IsActive = 1",
+        }
+    )
+
+    assert "[Shape].STAsBinary() AS geometry_wkb" in sql
+    assert "[Shape].STSrid AS geometry_srid" in sql
+    assert "FROM [dbo].[Footprints]" in sql
+    assert "[BuildingID] AS [BuildingID]" in sql
+    assert "WHERE IsActive = 1" in sql
+
+
+def test_dataframe_for_sql_export_replaces_geometry_with_wkt():
+    gdf = gpd.GeoDataFrame(
+        {"StructureID": ["s1"]},
+        geometry=[box(0, 0, 1, 1)],
+        crs="EPSG:4326",
+    )
+
+    frame = dataframe_for_sql_export(gdf)
+
+    assert "geometry" not in frame.columns
+    assert frame.loc[0, "geometry_wkt"].startswith("POLYGON")
+
+
+def test_export_dataframe_to_sql_server_writes_sql_table(tmp_path):
+    db_path = tmp_path / "export.sqlite"
+    gdf = gpd.GeoDataFrame(
+        {"StructureID": ["s1"], "City": ["Chicago"]},
+        geometry=[box(0, 0, 1, 1)],
+        crs="EPSG:4326",
+    )
+
+    result = export_dataframe_to_sql_server(
+        gdf,
+        {
+            "connection": f"sqlite:///{db_path}",
+            "table": "structures_out",
+            "if_exists": "replace",
+            "geometry_column": "geometry_wkt",
+        },
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT StructureID, City, geometry_wkt FROM structures_out").fetchall()
+    assert result["rows_exported"] == 1
+    assert rows[0][0] == "s1"
+    assert rows[0][2].startswith("POLYGON")
