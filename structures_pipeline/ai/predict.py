@@ -38,12 +38,19 @@ PREDICTION_COLUMNS = [
     "PredictionModelVersion",
     "PredictionConfidence",
     "PredictionFeaturesUsed",
+    "AIDisclosureLevel",
+    "PredictionSuppressionReason",
 ]
 
 
 # Add empty prediction columns to preserve the final schema when AI is disabled.
 def empty_prediction_columns(df: gpd.GeoDataFrame | pd.DataFrame) -> gpd.GeoDataFrame | pd.DataFrame:
     """Add empty prediction columns to preserve the final schema when AI is disabled."""
+    if "CoverageTier" not in df.columns:
+        df["CoverageTier"] = "Tier 3"
+    else:
+        missing_tier = df["CoverageTier"].isna() | df["CoverageTier"].astype(str).str.strip().eq("")
+        df.loc[missing_tier, "CoverageTier"] = "Tier 3"
     for column in PREDICTION_COLUMNS:
         if column not in df.columns:
             df[column] = pd.NA
@@ -61,7 +68,24 @@ def prediction_candidate_mask(df: pd.DataFrame, target: str, min_confidence: flo
         weak_confidence = pd.to_numeric(df[confidence_column], errors="coerce").fillna(0.0) < min_confidence
     else:
         weak_confidence = pd.Series(True, index=df.index)
-    return value_missing | weak_confidence
+    coverage_tier = df.get("CoverageTier", pd.Series("Tier 3", index=df.index)).fillna("Tier 3").astype(str)
+    tier_1 = coverage_tier.eq("Tier 1")
+    return value_missing | (~tier_1 & weak_confidence)
+
+
+# Return the consumer-facing disclosure label for each coverage tier.
+def ai_disclosure_for_tier(tier: str) -> str:
+    """Return the consumer-facing disclosure label for each coverage tier."""
+    tier = str(tier or "").strip()
+    if tier == "Tier 1":
+        return "authoritative_gap_fill_only"
+    if tier == "Tier 2":
+        return "moderate_ai_gap_fill"
+    if tier == "Tier 3":
+        return "mandatory_ai_disclosure"
+    if tier == "Tier 4":
+        return "estimated_heavy_ai_disclosure"
+    return "mandatory_ai_disclosure"
 
 
 # Predict with an estimator and return values plus row-level confidence.
@@ -114,6 +138,9 @@ def apply_ai_predictions(
         target_features = features.loc[candidate_mask]
         predictions, confidence = _predict_values(estimator, target_features)
         keep = confidence >= float(config.ai_min_confidence)
+        suppressed_indexes = target_features.index[~keep]
+        if len(suppressed_indexes):
+            out.loc[suppressed_indexes, "PredictionSuppressionReason"] = "below_confidence_threshold"
         if not keep.any():
             continue
         indexes = target_features.index[keep]
@@ -124,5 +151,9 @@ def apply_ai_predictions(
         out.loc[indexes, "PredictionModelName"] = model_name
         out.loc[indexes, "PredictionModelVersion"] = model_version
         out.loc[indexes, "PredictionFeaturesUsed"] = features_used
+        out.loc[indexes, "AIDisclosureLevel"] = [
+            ai_disclosure_for_tier(tier) for tier in out.loc[indexes, "CoverageTier"]
+        ]
+        out.loc[indexes, "PredictionSuppressionReason"] = pd.NA
 
     return out

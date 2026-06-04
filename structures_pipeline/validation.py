@@ -26,6 +26,9 @@ def validate_output(gdf: gpd.GeoDataFrame) -> dict:
         empty = gdf[column].isna() | gdf[column].astype(str).str.strip().eq("")
         if empty.any():
             raise ValueError(f"Output has empty audit/freshness field: {column}")
+    coverage_empty = gdf["CoverageTier"].isna() | gdf["CoverageTier"].astype(str).str.strip().eq("")
+    if coverage_empty.any():
+        raise ValueError("Output has empty CoverageTier values")
     for column in ("LoadSource", "RawDataSource"):
         text = gdf[column].fillna("").astype(str).str.lower()
         if text.str.contains("ai|ml_inference|prediction", regex=True).any():

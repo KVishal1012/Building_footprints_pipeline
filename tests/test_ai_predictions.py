@@ -93,3 +93,42 @@ def test_apply_ai_predictions_suppresses_low_confidence_predictions():
 
     assert pd.isna(predicted.loc[1, "PredictedStructureType"])
     assert pd.isna(predicted.loc[1, "PredictionKind"])
+    assert predicted.loc[1, "PredictionSuppressionReason"] == "below_confidence_threshold"
+
+
+def test_tier_1_ai_only_fills_null_authoritative_fields():
+    frame = _base_frame()
+    frame["CoverageTier"] = ["Tier 1", "Tier 1"]
+    frame["StructureTypeConfidence"] = [0.2, pd.NA]
+    config = PipelineConfig(use_ai_predictions=True, ai_min_confidence=0.7)
+    bundle = {
+        "model_name": "unit_test_model",
+        "model_version": "v1",
+        "feature_columns": ["FootprintArea_m2"],
+        "estimators": {"StructureType": ConstantEstimator("commercial")},
+    }
+
+    predicted = apply_ai_predictions(frame, config, model_bundle=bundle)
+
+    assert pd.isna(predicted.loc[0, "PredictedStructureType"])
+    assert predicted.loc[1, "PredictedStructureType"] == "commercial"
+    assert predicted.loc[1, "AIDisclosureLevel"] == "authoritative_gap_fill_only"
+
+
+def test_lower_tiers_allow_weak_confidence_suggestions_without_overwrite():
+    frame = _base_frame()
+    frame["CoverageTier"] = ["Tier 3", "Tier 3"]
+    frame["StructureTypeConfidence"] = [0.2, pd.NA]
+    config = PipelineConfig(use_ai_predictions=True, ai_min_confidence=0.7)
+    bundle = {
+        "model_name": "unit_test_model",
+        "model_version": "v1",
+        "feature_columns": ["FootprintArea_m2"],
+        "estimators": {"StructureType": ConstantEstimator("commercial")},
+    }
+
+    predicted = apply_ai_predictions(frame, config, model_bundle=bundle)
+
+    assert predicted.loc[0, "StructureType"] == "residential"
+    assert predicted.loc[0, "PredictedStructureType"] == "commercial"
+    assert predicted.loc[0, "AIDisclosureLevel"] == "mandatory_ai_disclosure"

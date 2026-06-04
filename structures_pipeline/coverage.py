@@ -72,6 +72,20 @@ def build_gap_registry(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> pd.Data
     return pd.DataFrame(rows)
 
 
+# Add city coverage tiers to each structure so downstream AI policy can be deterministic.
+def apply_coverage_tiers(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> gpd.GeoDataFrame:
+    """Add city coverage tiers to each structure so downstream AI policy can be deterministic."""
+    if gdf.empty:
+        return gdf
+    out = gdf.copy()
+    if "CoverageTier" not in out.columns:
+        out["CoverageTier"] = pd.NA
+    for (city, state), group in out.groupby(["City", "State"], dropna=False):
+        tier = assign_coverage_tier(str(city), str(state), group, config)
+        out.loc[group.index, "CoverageTier"] = tier
+    return out
+
+
 # Write coverage metadata as CSV plus JSON for API-ready consumers.
 def write_coverage_outputs(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> dict:
     """Write coverage metadata as CSV plus JSON for API-ready consumers."""

@@ -11,7 +11,7 @@ from structures_pipeline.ai import apply_ai_predictions
 from structures_pipeline.attributes import finalize_attributes
 from structures_pipeline.census import parse_place, place_slug, resolve_census_year, select_places
 from structures_pipeline.config import PipelineConfig
-from structures_pipeline.coverage import write_coverage_outputs
+from structures_pipeline.coverage import apply_coverage_tiers, write_coverage_outputs
 from structures_pipeline.delivery import export_delivery_formats
 from structures_pipeline.geometry import normalize_boundary
 from structures_pipeline.sources import (
@@ -149,6 +149,7 @@ def build_place_structures(
     )
     if baseline_source:
         final = attach_baseline_proximity(final, baseline, baseline_buffer_meters)
+    final = apply_coverage_tiers(final, config)
     if config.use_ai_predictions:
         final = apply_ai_predictions(final, config)
     final = apply_audit_fields(final, config)

@@ -3,7 +3,12 @@ import pandas as pd
 from shapely.geometry import box
 
 from structures_pipeline.config import PipelineConfig
-from structures_pipeline.coverage import assign_coverage_tier, build_gap_registry, write_coverage_outputs
+from structures_pipeline.coverage import (
+    apply_coverage_tiers,
+    assign_coverage_tier,
+    build_gap_registry,
+    write_coverage_outputs,
+)
 from structures_pipeline.delivery import export_delivery_formats
 
 
@@ -45,6 +50,12 @@ def test_build_gap_registry_computes_completeness():
     assert registry.loc[0, "row_count"] == 2
     assert registry.loc[0, "structure_type_completeness"] == 0.5
     assert registry.loc[0, "num_stories_completeness"] == 1.0
+
+
+def test_apply_coverage_tiers_sets_row_level_policy_field():
+    tiered = apply_coverage_tiers(_frame(), PipelineConfig())
+
+    assert tiered["CoverageTier"].tolist() == ["Tier 1", "Tier 1"]
 
 
 def test_write_coverage_outputs(tmp_path):
