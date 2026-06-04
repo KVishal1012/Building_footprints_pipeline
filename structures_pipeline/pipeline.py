@@ -15,6 +15,7 @@ from structures_pipeline.coverage import apply_coverage_tiers, write_coverage_ou
 from structures_pipeline.delivery import export_delivery_formats
 from structures_pipeline.extensions import write_extension_tables
 from structures_pipeline.geometry import normalize_boundary
+from structures_pipeline.release import write_release_manifest
 from structures_pipeline.sources import (
     attach_nsi_attributes,
     attach_osm_attributes,
@@ -307,6 +308,20 @@ def build_places(
         else {}
     )
     extension_paths = write_extension_tables(final_dataframe, config) if config.domain_extensions else {}
+    release_manifest_path = (
+        write_release_manifest(
+            final_dataframe,
+            config,
+            manifest_path=manifest_path,
+            delivery_paths=delivery_paths,
+            coverage_paths=coverage_paths,
+            extension_paths=extension_paths,
+            sql_export=sql_export_result,
+            metrics=metrics,
+        )
+        if config.write_release_metadata
+        else None
+    )
 
     result = {
         "city_paths": city_paths,
@@ -318,6 +333,7 @@ def build_places(
         "delivery_paths": delivery_paths,
         "coverage_paths": coverage_paths,
         "extension_paths": extension_paths,
+        "release_manifest_path": release_manifest_path,
     }
     if keep_dataframe:
         result["dataframe"] = final_dataframe
