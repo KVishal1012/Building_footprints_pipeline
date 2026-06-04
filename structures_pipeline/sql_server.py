@@ -36,6 +36,21 @@ class SqlServerPipelineSettings:
     output_table: str
     baseline_table: str
     baseline_buffer_value: float
+    footprint_table: str | None = None
+    footprint_raw_data_source: str | None = None
+    footprint_geom_column: str = "Shape"
+    footprint_id_column: str | None = None
+    footprint_structure_type_column: str | None = None
+    footprint_units_column: str | None = None
+    footprint_stories_column: str | None = None
+    footprint_height_column: str | None = None
+    footprint_occupant_count_column: str | None = None
+    footprint_where: str | None = None
+    footprint_structure_type_source: str | None = None
+    footprint_units_source: str | None = None
+    footprint_stories_source: str | None = None
+    footprint_height_source: str | None = None
+    footprint_occupant_count_source: str | None = None
     baseline_srid: int = 4326
     baseline_geom_column: str = "Shape"
     baseline_id_column: str | None = None
@@ -107,8 +122,33 @@ def build_sql_server_pipeline_config(
         settings.baseline_srid,
         unit_to_meters=settings.buffer_unit_to_meters,
     )
+    footprint_source = None
+    if settings.footprint_table:
+        footprint_source = {
+            "connection": connection,
+            "table": settings.footprint_table,
+            "raw_data_source": settings.footprint_raw_data_source or settings.footprint_table,
+            "load_source": "sql_server",
+            "geom_column": settings.footprint_geom_column,
+            "id_column": settings.footprint_id_column,
+            "structure_type_column": settings.footprint_structure_type_column,
+            "units_column": settings.footprint_units_column,
+            "stories_column": settings.footprint_stories_column,
+            "height_column": settings.footprint_height_column,
+            "occupant_count_column": settings.footprint_occupant_count_column,
+            "where": settings.footprint_where,
+            "structure_type_source": settings.footprint_structure_type_source,
+            "units_source": settings.footprint_units_source,
+            "stories_source": settings.footprint_stories_source,
+            "height_source": settings.footprint_height_source,
+            "occupant_count_source": settings.footprint_occupant_count_source,
+            "crs": f"EPSG:{settings.baseline_srid}",
+            "source_name": settings.footprint_raw_data_source or settings.footprint_table,
+            "sqlserver_geometry_methods": True,
+        }
     return PipelineConfig(
         **config_overrides,
+        sql_footprint_source=footprint_source,
         sql_baseline_source={
             "connection": connection,
             "table": settings.baseline_table,

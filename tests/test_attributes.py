@@ -6,8 +6,8 @@ from structures_pipeline.attributes import finalize_attributes, normalize_struct
 
 
 def test_normalize_structure_type_keeps_unknown_as_null():
-    values = pd.Series(["Detached house", "COM1", None])
-    assert normalize_structure_type(values).tolist() == ["residential", "commercial", pd.NA]
+    values = pd.Series(["Detached house", "COM1", "mixed_use", None])
+    assert normalize_structure_type(values).tolist() == ["residential", "commercial", "mixed_use", pd.NA]
 
 
 def test_finalize_attributes_uses_nsi_then_acs_for_occupants():
@@ -53,3 +53,60 @@ def test_finalize_attributes_uses_nsi_then_acs_for_occupants():
     assert final.loc[1, "OccupantCount"] == 5
     assert final.loc[1, "OccupantCountSource"] == "acs"
     assert final.loc[1, "OccupantCountMethod"] == "num_units_x_acs_household_size"
+
+
+def test_finalize_attributes_prioritizes_authoritative_sql_attributes():
+    place = pd.Series(
+        {
+            "PlaceGEOID": "3606100",
+            "City": "Manhattan",
+            "State": "New York",
+            "StateFP": "36",
+        }
+    )
+    base = gpd.GeoDataFrame(
+        {
+            "StructureID": ["sql_1"],
+            "FootprintSource": ["sql_server_authoritative"],
+            "OvertureID": [pd.NA],
+            "MicrosoftID": [pd.NA],
+            "SQLStructureType": ["mixed_use"],
+            "SQLStructureTypeSource": ["nyc_pluto_land_use"],
+            "OvertureClass": ["commercial"],
+            "SQLUnits": [14],
+            "SQLUnitsSource": ["nyc_pluto_units_total"],
+            "Units_OSM": [pd.NA],
+            "SQLStories": [22],
+            "SQLStoriesSource": ["nyc_pluto_num_floors"],
+            "Stories_OVT": [18],
+            "SQLOccupantCount": [75],
+            "SQLOccupantCountSource": ["nyc_pluto_occupancy"],
+            "NSI_Pop2AM": [10],
+            "NSI_Pop2PM": [12],
+            "NSI_EmpNum": [pd.NA],
+            "NSI_Students": [pd.NA],
+            "FootprintAssignmentMethod": ["representative_point_within"],
+            "FootprintAssignmentOverlapRatio": [pd.NA],
+        },
+        geometry=[box(0, 0, 0.001, 0.001)],
+        crs="EPSG:4326",
+    )
+
+    final = finalize_attributes(
+        base,
+        place=place,
+        census_household_size=2.5,
+        acs_source="ACS test",
+        overture_release="demo",
+        census_year=2025,
+    )
+
+    assert final.loc[0, "StructureType"] == "mixed_use"
+    assert final.loc[0, "StructureTypeSource"] == "nyc_pluto_land_use"
+    assert final.loc[0, "NumUnits"] == 14
+    assert final.loc[0, "NumUnitsSource"] == "nyc_pluto_units_total"
+    assert final.loc[0, "NumStories"] == 22
+    assert final.loc[0, "NumStoriesSource"] == "nyc_pluto_num_floors"
+    assert final.loc[0, "OccupantCount"] == 75
+    assert final.loc[0, "OccupantCountSource"] == "nyc_pluto_occupancy"
+    assert final.loc[0, "OccupantCountMethod"] == "sql_authoritative_count"

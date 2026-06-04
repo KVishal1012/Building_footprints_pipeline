@@ -140,6 +140,8 @@ REQUIRED_OUTPUT_COLUMNS = [
     "State",
     "StateFP",
     "Country",
+    "LoadSource",
+    "RawDataSource",
     "FootprintSource",
     "OvertureID",
     "MicrosoftID",

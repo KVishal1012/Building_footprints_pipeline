@@ -20,6 +20,7 @@ def normalize_structure_type(raw: pd.Series) -> pd.Series:
     result = pd.Series(pd.NA, index=raw.index, dtype="object")
     rules = [
         (r"condo|condominium", "condo"),
+        (r"mixed.?use|mixed_use|mixuse", "mixed_use"),
         (r"apart|res3|multi.?family|multifamily", "apartment"),
         (r"hotel|motel|res4", "hotel"),
         (r"garage|parking", "garage"),
@@ -69,6 +70,10 @@ def finalize_attributes(
     out["State"] = place["State"]
     out["StateFP"] = place["StateFP"]
     out["Country"] = "USA"
+    if "LoadSource" not in out.columns:
+        out["LoadSource"] = out.get("FootprintSource", pd.Series(pd.NA, index=out.index))
+    if "RawDataSource" not in out.columns:
+        out["RawDataSource"] = out.get("FootprintSource", pd.Series(pd.NA, index=out.index))
 
     _ensure_columns(
         out,
@@ -80,78 +85,95 @@ def finalize_attributes(
             "NSI_DamageCategory",
             "ParcelLandUse",
             "SQLStructureType",
+            "SQLStructureTypeSource",
             "Units_OSM",
             "NSI_ResUnits",
+            "SQLUnits",
+            "SQLUnitsSource",
             "Stories_OSM",
             "Stories_OVT",
             "NSI_NumStory",
             "SQLStories",
+            "SQLStoriesSource",
             "Height_OSM",
             "Height_OVT",
             "Height_MS",
             "SQLHeight",
+            "SQLHeightSource",
             "NSI_Pop2AM",
             "NSI_Pop2PM",
             "NSI_EmpNum",
             "NSI_Students",
+            "SQLOccupantCount",
+            "SQLOccupantCountSource",
         ],
     )
 
     out["StructureTypeRaw"], out["StructureTypeSource"] = combine_first_with_source(
         out,
         [
+            ("SQLStructureType", "sql_structure_type"),
             ("OSM_StructureType", "osm"),
             ("OvertureClass", "overture_class"),
             ("OvertureSubtype", "overture_subtype"),
             ("NSI_OccType", "nsi_occtype"),
             ("NSI_DamageCategory", "nsi_damage_category"),
             ("ParcelLandUse", "parcel_land_use"),
-            ("SQLStructureType", "sql_structure_type"),
         ],
     )
+    sql_type_mask = out["SQLStructureType"].notna() & out["SQLStructureTypeSource"].notna()
+    out.loc[sql_type_mask, "StructureTypeSource"] = out.loc[sql_type_mask, "SQLStructureTypeSource"]
     out["StructureType"] = normalize_structure_type(out["StructureTypeRaw"])
     out["StructureTypeConfidence"] = confidence_for_source(
         out["StructureTypeSource"],
         {
+            "sql_structure_type": 0.95,
             "osm": 0.85,
             "overture_class": 0.80,
             "overture_subtype": 0.78,
             "nsi_occtype": 0.72,
             "nsi_damage_category": 0.68,
             "parcel_land_use": 0.62,
-            "sql_structure_type": 0.70,
         },
     )
+    out.loc[sql_type_mask, "StructureTypeConfidence"] = 0.95
 
     height, height_source = combine_first_with_source(
         out,
-        [("Height_OSM", "osm"), ("Height_OVT", "overture"), ("Height_MS", "microsoft"), ("SQLHeight", "sql")],
+        [("SQLHeight", "sql"), ("Height_OSM", "osm"), ("Height_OVT", "overture"), ("Height_MS", "microsoft")],
     )
     out["HeightM"] = to_numeric_safe(height, index=out.index)
     out["HeightSource"] = height_source
+    sql_height_mask = out["SQLHeight"].notna() & out["SQLHeightSource"].notna()
+    out.loc[sql_height_mask, "HeightSource"] = out.loc[sql_height_mask, "SQLHeightSource"]
     out["Stories_EstFromHeight"] = (out["HeightM"] / 3.05).round().clip(lower=1, upper=200)
     out.loc[out["HeightM"].isna(), "Stories_EstFromHeight"] = np.nan
 
     out["NumStories"], out["NumStoriesSource"] = combine_first_with_source(
         out,
         [
+            ("SQLStories", "sql"),
             ("Stories_OSM", "osm"),
             ("Stories_OVT", "overture"),
             ("NSI_NumStory", "nsi"),
-            ("SQLStories", "sql"),
             ("Stories_EstFromHeight", "height_estimate"),
         ],
     )
+    sql_stories_mask = out["SQLStories"].notna() & out["SQLStoriesSource"].notna()
+    out.loc[sql_stories_mask, "NumStoriesSource"] = out.loc[sql_stories_mask, "SQLStoriesSource"]
     out["NumStories"] = to_numeric_safe(out["NumStories"], index=out.index)
     out["NumStoriesConfidence"] = confidence_for_source(
         out["NumStoriesSource"],
-        {"osm": 0.90, "overture": 0.86, "nsi": 0.78, "sql": 0.74, "height_estimate": 0.55},
+        {"sql": 0.95, "osm": 0.90, "overture": 0.86, "nsi": 0.78, "height_estimate": 0.55},
     )
+    out.loc[sql_stories_mask, "NumStoriesConfidence"] = 0.95
 
     out["NumUnits"], out["NumUnitsSource"] = combine_first_with_source(
         out,
-        [("Units_OSM", "osm"), ("NSI_ResUnits", "nsi")],
+        [("SQLUnits", "sql"), ("Units_OSM", "osm"), ("NSI_ResUnits", "nsi")],
     )
+    sql_units_mask = out["SQLUnits"].notna() & out["SQLUnitsSource"].notna()
+    out.loc[sql_units_mask, "NumUnitsSource"] = out.loc[sql_units_mask, "SQLUnitsSource"]
     out["NumUnits"] = to_numeric_safe(out["NumUnits"], index=out.index)
     infer_single = (
         out["NumUnits"].isna()
@@ -164,9 +186,11 @@ def finalize_attributes(
     out.loc[infer_single, "NumUnitsSource"] = "inferred_single_family"
     out["NumUnitsConfidence"] = confidence_for_source(
         out["NumUnitsSource"],
-        {"osm": 0.90, "nsi": 0.78, "inferred_single_family": 0.58},
+        {"sql": 0.95, "osm": 0.90, "nsi": 0.78, "inferred_single_family": 0.58},
     )
+    out.loc[sql_units_mask, "NumUnitsConfidence"] = 0.95
 
+    sql_occupants = to_numeric_safe(out.get("SQLOccupantCount"), index=out.index)
     nsi_people = pd.concat(
         [
             to_numeric_safe(out.get("NSI_Pop2AM"), index=out.index),
@@ -178,12 +202,24 @@ def finalize_attributes(
         ],
         axis=1,
     ).max(axis=1, skipna=True)
-    out["OccupantCount"] = nsi_people
-    out["OccupantCountSource"] = np.where(nsi_people.notna(), "nsi", pd.NA)
-    out["OccupantCountMethod"] = np.where(
-        nsi_people.notna(), "nsi_max_2am_2pm_emp_students", pd.NA
+    out["OccupantCount"] = sql_occupants.combine_first(nsi_people)
+    out["OccupantCountSource"] = pd.Series(pd.NA, index=out.index, dtype="object")
+    sql_occupant_source = out["SQLOccupantCountSource"].where(
+        out["SQLOccupantCountSource"].notna(),
+        "authoritative_raw_occupant_count",
     )
-    out["OccupantCountConfidence"] = np.where(nsi_people.notna(), 0.76, np.nan)
+    out.loc[sql_occupants.notna(), "OccupantCountSource"] = sql_occupant_source.loc[sql_occupants.notna()]
+    out.loc[out["OccupantCountSource"].isna() & nsi_people.notna(), "OccupantCountSource"] = "nsi"
+    out["OccupantCountMethod"] = np.where(
+        sql_occupants.notna(),
+        "sql_authoritative_count",
+        np.where(nsi_people.notna(), "nsi_max_2am_2pm_emp_students", pd.NA),
+    )
+    out["OccupantCountConfidence"] = np.where(
+        sql_occupants.notna(),
+        0.95,
+        np.where(nsi_people.notna(), 0.76, np.nan),
+    )
 
     if census_household_size is not None:
         census_est = out["NumUnits"] * census_household_size

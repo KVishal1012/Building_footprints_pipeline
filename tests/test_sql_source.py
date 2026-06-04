@@ -47,13 +47,13 @@ def test_load_sql_footprints_standardizes_and_assigns_to_place(tmp_path):
     db_path = tmp_path / "footprints.sqlite"
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "CREATE TABLE footprints (building_id TEXT, use_type TEXT, height_m REAL, stories INTEGER, geom TEXT)"
+            "CREATE TABLE footprints (building_id TEXT, use_type TEXT, units INTEGER, height_m REAL, stories INTEGER, occupants INTEGER, geom TEXT)"
         )
         conn.executemany(
-            "INSERT INTO footprints VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO footprints VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
-                ("inside", "house", 6.0, 2, "POLYGON ((0.1 0.1, 0.1 0.2, 0.2 0.2, 0.2 0.1, 0.1 0.1))"),
-                ("outside", "warehouse", 9.0, 3, "POLYGON ((2 2, 2 3, 3 3, 3 2, 2 2))"),
+                ("inside", "house", 1, 6.0, 2, 3, "POLYGON ((0.1 0.1, 0.1 0.2, 0.2 0.2, 0.2 0.1, 0.1 0.1))"),
+                ("outside", "warehouse", 0, 9.0, 3, 5, "POLYGON ((2 2, 2 3, 3 3, 3 2, 2 2))"),
             ],
         )
     place = pd.Series(
@@ -72,9 +72,16 @@ def test_load_sql_footprints_standardizes_and_assigns_to_place(tmp_path):
             "geom_column": "geom",
             "id_column": "building_id",
             "structure_type_column": "use_type",
+            "units_column": "units",
             "height_column": "height_m",
             "stories_column": "stories",
-            "source_name": "city_sql",
+            "occupant_count_column": "occupants",
+            "source_name": "city_open_data",
+            "raw_data_source": "city_open_data",
+            "structure_type_source": "city_open_data_use_type",
+            "units_source": "city_open_data_units",
+            "stories_source": "city_open_data_stories",
+            "occupant_count_source": "city_open_data_occupants",
         }
     )
 
@@ -82,10 +89,18 @@ def test_load_sql_footprints_standardizes_and_assigns_to_place(tmp_path):
 
     assert len(footprints) == 1
     assert footprints.iloc[0]["StructureID"].endswith("inside")
-    assert footprints.iloc[0]["FootprintSource"] == "city_sql"
+    assert footprints.iloc[0]["LoadSource"] == "sql_server"
+    assert footprints.iloc[0]["RawDataSource"] == "city_open_data"
+    assert footprints.iloc[0]["FootprintSource"] == "city_open_data"
     assert footprints.iloc[0]["SQLStructureType"] == "house"
+    assert footprints.iloc[0]["SQLStructureTypeSource"] == "city_open_data_use_type"
+    assert footprints.iloc[0]["SQLUnits"] == 1
+    assert footprints.iloc[0]["SQLUnitsSource"] == "city_open_data_units"
     assert footprints.iloc[0]["SQLHeight"] == 6.0
     assert footprints.iloc[0]["SQLStories"] == 2
+    assert footprints.iloc[0]["SQLStoriesSource"] == "city_open_data_stories"
+    assert footprints.iloc[0]["SQLOccupantCount"] == 3
+    assert footprints.iloc[0]["SQLOccupantCountSource"] == "city_open_data_occupants"
 
 
 def test_sql_baseline_source_buffers_and_tags_nearest_structure(tmp_path):
@@ -129,6 +144,8 @@ def test_sqlserver_geometry_select_uses_spatial_methods():
             "geom_column": "Shape",
             "id_column": "BuildingID",
             "structure_type_column": "UseType",
+            "units_column": "UnitCount",
+            "occupant_count_column": "Occupants",
             "where": "IsActive = 1",
         }
     )
@@ -137,6 +154,8 @@ def test_sqlserver_geometry_select_uses_spatial_methods():
     assert "[Shape].STSrid AS geometry_srid" in sql
     assert "FROM [dbo].[Footprints]" in sql
     assert "[BuildingID] AS [BuildingID]" in sql
+    assert "[UnitCount] AS [UnitCount]" in sql
+    assert "[Occupants] AS [Occupants]" in sql
     assert "WHERE IsActive = 1" in sql
 
 

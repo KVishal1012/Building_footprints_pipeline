@@ -56,6 +56,17 @@ def test_build_sql_server_pipeline_config_sets_baseline_and_export():
         baseline_geom_column="Shape",
         baseline_id_column="AssetID",
         baseline_buffer_value=100,
+        footprint_table="dbo.AuthoritativeStructures",
+        footprint_raw_data_source="nyc_pluto",
+        footprint_id_column="StructureID",
+        footprint_structure_type_column="StructureType",
+        footprint_units_column="NumUnits",
+        footprint_stories_column="NumStories",
+        footprint_occupant_count_column="OccupantCount",
+        footprint_structure_type_source="nyc_pluto_land_use",
+        footprint_units_source="nyc_pluto_units_total",
+        footprint_stories_source="nyc_pluto_num_floors",
+        footprint_occupant_count_source="nyc_pluto_occupancy",
         baseline_srid=2263,
         trusted_connection=True,
     )
@@ -71,6 +82,18 @@ def test_build_sql_server_pipeline_config_sets_baseline_and_export():
     assert config.sql_baseline_source["id_column"] == "AssetID"
     assert config.sql_baseline_source["buffer_meters"] == pytest.approx(100 * US_SURVEY_FOOT_TO_METERS)
     assert config.sql_baseline_source["sqlserver_geometry_methods"] is True
+    assert config.sql_footprint_source["table"] == "dbo.AuthoritativeStructures"
+    assert config.sql_footprint_source["load_source"] == "sql_server"
+    assert config.sql_footprint_source["raw_data_source"] == "nyc_pluto"
+    assert config.sql_footprint_source["id_column"] == "StructureID"
+    assert config.sql_footprint_source["structure_type_column"] == "StructureType"
+    assert config.sql_footprint_source["units_column"] == "NumUnits"
+    assert config.sql_footprint_source["stories_column"] == "NumStories"
+    assert config.sql_footprint_source["occupant_count_column"] == "OccupantCount"
+    assert config.sql_footprint_source["structure_type_source"] == "nyc_pluto_land_use"
+    assert config.sql_footprint_source["units_source"] == "nyc_pluto_units_total"
+    assert config.sql_footprint_source["stories_source"] == "nyc_pluto_num_floors"
+    assert config.sql_footprint_source["occupant_count_source"] == "nyc_pluto_occupancy"
     assert config.sql_export["table"] == "dbo.StructuresOutput"
     assert config.return_dataframe is True
     assert config.write_local_outputs is False

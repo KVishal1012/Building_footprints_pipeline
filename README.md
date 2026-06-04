@@ -118,8 +118,11 @@ The local `sql_server_inputs.py` file is ignored by Git so server names and cred
 - `PLACE_SPECS`, `STATE_FILTERS`, or `ALL_US_CITIES`
 - `SQL_SERVER`
 - `BASELINE`
+- `FOOTPRINTS`
 - `OUTPUT`
 - `PIPELINE_OVERRIDES`
+
+Use `FOOTPRINTS` for the authoritative structure table loaded through SQL Server. SQL Server is recorded as the load mechanism, not the raw authority. Set `raw_data_source` and the per-attribute source labels to the real upstream source, such as `nyc_pluto`, `nyc_building_footprints`, `assessor`, or another agency dataset. Overture, OSM, NSI, ACS, and parcels then act as fallback/enrichment sources only where the authoritative raw source does not provide a value.
 
 You can also call the SQL Server module directly from Python:
 
@@ -137,6 +140,19 @@ settings = SqlServerPipelineSettings(
     baseline_id_column="AssetID",
     baseline_buffer_value=250,
     baseline_srid=4326,
+    footprint_table="dbo.AuthoritativeStructures",
+    footprint_raw_data_source="nyc_pluto",
+    footprint_id_column="StructureID",
+    footprint_structure_type_column="StructureType",
+    footprint_units_column="NumUnits",
+    footprint_stories_column="NumStories",
+    footprint_height_column="HeightM",
+    footprint_occupant_count_column="OccupantCount",
+    footprint_structure_type_source="nyc_pluto_land_use",
+    footprint_units_source="nyc_pluto_units_total",
+    footprint_stories_source="nyc_pluto_num_floors",
+    footprint_height_source="nyc_pluto_height_roof",
+    footprint_occupant_count_source="nyc_pluto_occupancy",
     output_table="dbo.StructuresOutput",
     username="user",
     password="password",

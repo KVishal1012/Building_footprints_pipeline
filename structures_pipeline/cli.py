@@ -32,8 +32,10 @@ def parse_sql_source_args(args: argparse.Namespace) -> dict | None:
         "geom_column": args.sql_geom_column,
         "id_column": args.sql_id_column,
         "structure_type_column": args.sql_structure_type_column,
+        "units_column": args.sql_units_column,
         "height_column": args.sql_height_column,
         "stories_column": args.sql_stories_column,
+        "occupant_count_column": args.sql_occupant_count_column,
         "where": args.sql_where,
         "crs": args.sql_crs,
         "source_name": args.sql_source_name,
@@ -108,8 +110,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sql-geom-column", default="geom", help="Geometry column returned by the SQL source.")
     parser.add_argument("--sql-id-column", help="Stable ID column in the SQL source.")
     parser.add_argument("--sql-structure-type-column", help="Optional structure type/use column in the SQL source.")
+    parser.add_argument("--sql-units-column", help="Optional unit-count column in the SQL source.")
     parser.add_argument("--sql-height-column", help="Optional height column in the SQL source.")
     parser.add_argument("--sql-stories-column", help="Optional stories column in the SQL source.")
+    parser.add_argument("--sql-occupant-count-column", help="Optional authoritative occupant-count column in the SQL source.")
     parser.add_argument("--sql-where", help="Optional WHERE clause used with --sql-table.")
     parser.add_argument("--sql-crs", default="EPSG:4326", help="CRS for SQL geometries when the source does not provide one.")
     parser.add_argument("--sql-source-name", default="sql", help="Label recorded in FootprintSource for SQL rows.")

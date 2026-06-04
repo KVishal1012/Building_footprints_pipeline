@@ -139,16 +139,20 @@ def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
             for key in (
                 "id_column",
                 "structure_type_column",
+                "units_column",
                 "height_column",
                 "stories_column",
+                "occupant_count_column",
             )
         ):
             columns = [source.get("geom_column", "geom")]
         for key in (
             "id_column",
             "structure_type_column",
+            "units_column",
             "height_column",
             "stories_column",
+            "occupant_count_column",
         ):
             column = source.get(key)
             if column and column not in columns:
@@ -206,8 +210,10 @@ def _sqlserver_geometry_select(source: dict) -> str:
     for key in (
         "id_column",
         "structure_type_column",
+        "units_column",
         "height_column",
         "stories_column",
+        "occupant_count_column",
     ):
         column = source.get(key)
         if column and column != geom_column and column not in (source.get("columns") or []):
@@ -375,13 +381,34 @@ def standardize_sql_footprints(gdf: gpd.GeoDataFrame, place: pd.Series, source: 
     else:
         source_ids = pd.Series(gdf.index, index=gdf.index).astype(str)
     source_name = source.get("source_name") or "sql"
+    raw_data_source = source.get("raw_data_source") or source_name
+    load_source = source.get("load_source") or "sql_server"
     structure_type_column = source.get("structure_type_column")
+    units_column = source.get("units_column")
     height_column = source.get("height_column")
     stories_column = source.get("stories_column")
+    occupant_count_column = source.get("occupant_count_column")
+    structure_type_source = source.get("structure_type_source") or (
+        f"{raw_data_source}_{structure_type_column}" if structure_type_column else pd.NA
+    )
+    units_source = source.get("units_source") or (
+        f"{raw_data_source}_{units_column}" if units_column else pd.NA
+    )
+    stories_source = source.get("stories_source") or (
+        f"{raw_data_source}_{stories_column}" if stories_column else pd.NA
+    )
+    height_source = source.get("height_source") or (
+        f"{raw_data_source}_{height_column}" if height_column else pd.NA
+    )
+    occupant_count_source = source.get("occupant_count_source") or (
+        f"{raw_data_source}_{occupant_count_column}" if occupant_count_column else pd.NA
+    )
     out = gpd.GeoDataFrame(
         {
             "StructureID": f"sql_{place['PlaceGEOID']}_{city_slug}_" + source_ids,
-            "FootprintSource": source_name,
+            "LoadSource": load_source,
+            "RawDataSource": raw_data_source,
+            "FootprintSource": raw_data_source,
             "OvertureID": pd.Series(pd.NA, index=gdf.index, dtype="string"),
             "MicrosoftID": pd.Series(pd.NA, index=gdf.index, dtype="string"),
             "BuildingName_OVT": pd.Series(pd.NA, index=gdf.index),
@@ -390,8 +417,15 @@ def standardize_sql_footprints(gdf: gpd.GeoDataFrame, place: pd.Series, source: 
             "OvertureSubtype": pd.Series(pd.NA, index=gdf.index),
             "OvertureClass": pd.Series(pd.NA, index=gdf.index),
             "SQLStructureType": gdf[structure_type_column] if structure_type_column in gdf.columns else pd.Series(pd.NA, index=gdf.index),
+            "SQLStructureTypeSource": pd.Series(structure_type_source, index=gdf.index),
+            "SQLUnits": to_numeric_safe(gdf[units_column], index=gdf.index) if units_column in gdf.columns else pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "SQLUnitsSource": pd.Series(units_source, index=gdf.index),
             "SQLHeight": to_numeric_safe(gdf[height_column], index=gdf.index) if height_column in gdf.columns else pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "SQLHeightSource": pd.Series(height_source, index=gdf.index),
             "SQLStories": to_numeric_safe(gdf[stories_column], index=gdf.index) if stories_column in gdf.columns else pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "SQLStoriesSource": pd.Series(stories_source, index=gdf.index),
+            "SQLOccupantCount": to_numeric_safe(gdf[occupant_count_column], index=gdf.index) if occupant_count_column in gdf.columns else pd.Series(np.nan, index=gdf.index, dtype="float64"),
+            "SQLOccupantCountSource": pd.Series(occupant_count_source, index=gdf.index),
             "HasParts": pd.Series(pd.NA, index=gdf.index),
             "Height_MS": pd.Series(np.nan, index=gdf.index, dtype="float64"),
             "Confidence_MS": pd.Series(np.nan, index=gdf.index, dtype="float64"),

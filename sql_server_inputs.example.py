@@ -37,6 +37,26 @@ BASELINE = {
     "buffer_unit_to_meters": None,
 }
 
+# Optional authoritative structure table. Fill these columns when SQL Server
+# should be the source of truth for attributes.
+FOOTPRINTS = {
+    "table": "dbo.AuthoritativeStructures",
+    "raw_data_source": "nyc_pluto",
+    "geometry_column": "Shape",
+    "id_column": "StructureID",
+    "structure_type_column": "StructureType",
+    "units_column": "NumUnits",
+    "stories_column": "NumStories",
+    "height_column": "HeightM",
+    "occupant_count_column": "OccupantCount",
+    "where": None,
+    "structure_type_source": "nyc_pluto_land_use",
+    "units_source": "nyc_pluto_units_total",
+    "stories_source": "nyc_pluto_num_floors",
+    "height_source": "nyc_pluto_height_roof",
+    "occupant_count_source": "nyc_pluto_occupancy",
+}
+
 # Final SQL Server table that receives the exported structures dataframe.
 OUTPUT = {
     "table": "dbo.StructuresOutput",
@@ -70,6 +90,21 @@ def get_settings() -> SqlServerPipelineSettings:
         output_table=OUTPUT["table"],
         baseline_table=BASELINE["table"],
         baseline_buffer_value=BASELINE["buffer_value"],
+        footprint_table=FOOTPRINTS["table"],
+        footprint_raw_data_source=FOOTPRINTS["raw_data_source"],
+        footprint_geom_column=FOOTPRINTS["geometry_column"],
+        footprint_id_column=FOOTPRINTS["id_column"],
+        footprint_structure_type_column=FOOTPRINTS["structure_type_column"],
+        footprint_units_column=FOOTPRINTS["units_column"],
+        footprint_stories_column=FOOTPRINTS["stories_column"],
+        footprint_height_column=FOOTPRINTS["height_column"],
+        footprint_occupant_count_column=FOOTPRINTS["occupant_count_column"],
+        footprint_where=FOOTPRINTS["where"],
+        footprint_structure_type_source=FOOTPRINTS["structure_type_source"],
+        footprint_units_source=FOOTPRINTS["units_source"],
+        footprint_stories_source=FOOTPRINTS["stories_source"],
+        footprint_height_source=FOOTPRINTS["height_source"],
+        footprint_occupant_count_source=FOOTPRINTS["occupant_count_source"],
         baseline_srid=BASELINE["srid"],
         baseline_geom_column=BASELINE["geometry_column"],
         baseline_id_column=BASELINE["id_column"],
