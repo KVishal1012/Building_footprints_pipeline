@@ -13,6 +13,7 @@ from structures_pipeline.census import parse_place, place_slug, resolve_census_y
 from structures_pipeline.config import PipelineConfig
 from structures_pipeline.coverage import apply_coverage_tiers, write_coverage_outputs
 from structures_pipeline.delivery import export_delivery_formats
+from structures_pipeline.extensions import write_extension_tables
 from structures_pipeline.geometry import normalize_boundary
 from structures_pipeline.sources import (
     attach_nsi_attributes,
@@ -253,6 +254,7 @@ def build_places(
         or config.sql_export
         or config.delivery_formats
         or config.coverage_config.get("write_outputs", False)
+        or config.domain_extensions
     )
 
     for _, place in places.iterrows():
@@ -304,6 +306,7 @@ def build_places(
         if config.coverage_config.get("write_outputs", False)
         else {}
     )
+    extension_paths = write_extension_tables(final_dataframe, config) if config.domain_extensions else {}
 
     result = {
         "city_paths": city_paths,
@@ -314,6 +317,7 @@ def build_places(
         "sql_export": sql_export_result,
         "delivery_paths": delivery_paths,
         "coverage_paths": coverage_paths,
+        "extension_paths": extension_paths,
     }
     if keep_dataframe:
         result["dataframe"] = final_dataframe

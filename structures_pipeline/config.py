@@ -46,6 +46,7 @@ class PipelineConfig:
     delivery_formats: list[str] = field(default_factory=list)
     delivery_output_dir: Path = Path("data/delivery")
     postgis_export: dict | None = None
+    domain_extensions: list[str] = field(default_factory=list)
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     # Normalize path and optional dict-like settings after dataclass creation.
@@ -64,6 +65,7 @@ class PipelineConfig:
         self.coverage_config = dict(self.coverage_config or {})
         self.delivery_formats = list(self.delivery_formats or [])
         self.postgis_export = dict(self.postgis_export or {})
+        self.domain_extensions = list(self.domain_extensions or [])
         self.parcel_sources = dict(self.parcel_sources)
 
     # Directory for per-place GeoParquet outputs partitioned by state FIPS.
