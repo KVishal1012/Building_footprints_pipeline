@@ -35,6 +35,10 @@ class PipelineConfig:
     return_dataframe: bool = False
     dataframe_preview_rows: int = 10
     write_local_outputs: bool = True
+    use_ai_predictions: bool = False
+    ai_model_dir: Path = Path("models/us_structure_ai")
+    ai_prediction_mode: str = "suggest_only"
+    ai_min_confidence: float = 0.70
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     # Normalize path and optional dict-like settings after dataclass creation.
@@ -44,6 +48,7 @@ class PipelineConfig:
         self.output_dir = Path(self.output_dir)
         self.raw_dir = Path(self.raw_dir)
         self.cache_dir = Path(self.cache_dir)
+        self.ai_model_dir = Path(self.ai_model_dir)
         self.sql_footprint_source = dict(self.sql_footprint_source or {})
         self.sql_baseline_source = dict(self.sql_baseline_source or {})
         self.sql_export = dict(self.sql_export or {})

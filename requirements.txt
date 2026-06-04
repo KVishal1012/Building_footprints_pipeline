@@ -13,3 +13,5 @@ requests
 overturemaps
 duckdb
 pytest
+scikit-learn
+joblib

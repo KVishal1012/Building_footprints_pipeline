@@ -7,6 +7,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
+from structures_pipeline.ai import apply_ai_predictions
 from structures_pipeline.attributes import finalize_attributes
 from structures_pipeline.census import parse_place, place_slug, resolve_census_year, select_places
 from structures_pipeline.config import PipelineConfig
@@ -118,6 +119,8 @@ def build_place_structures(
     )
     if baseline_source:
         final = attach_baseline_proximity(final, baseline, baseline_buffer_meters)
+    if config.use_ai_predictions:
+        final = apply_ai_predictions(final, config)
     metrics = validate_output(final) if not final.empty else {"row_count": 0}
     output_path = city_output_path(config, place)
     metrics.update(

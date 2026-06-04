@@ -1,8 +1,19 @@
-# US Building Footprints Pipeline
+# Structure Intelligence Database
 
-Production-oriented Python pipeline for enriched structure polygons across US Census places in the 50 states plus DC.
+Production-oriented structure database for enriched building and structure records across US Census places in the 50 states plus DC.
 
-The pipeline uses Census TIGER/Line place boundaries for reproducible city coverage, Overture Maps as the primary footprint source, Microsoft Global ML Building Footprints as de-duplicated fallback footprints, USACE NSI and ACS for attributes, optional parcel layers, and optional OSM enrichment for single-city/debug runs.
+The goal is a trusted structure intelligence database for urban planning, flood monitoring, oil and gas, weather monitoring, emergency response, insurance, and infrastructure analysis. The Python pipeline, SQL Server export, and AI models are supporting systems; the end product is the queryable structure database.
+
+Every major attribute should answer:
+
+- What is the value?
+- Where did it come from?
+- How confident is it?
+- Was it authoritative, derived, estimated, or AI-suggested?
+
+See [docs/product_map.md](docs/product_map.md) for the product map.
+
+The pipeline uses Census TIGER/Line place boundaries for reproducible city coverage, Overture Maps, Microsoft Global ML Building Footprints, SQL Server authoritative sources, USACE NSI and ACS, optional parcel layers, and optional OSM enrichment.
 
 ## Setup
 
@@ -183,6 +194,19 @@ When local outputs are enabled, the pipeline writes:
 
 Required attributes include `StructureType`, `NumUnits`, `NumStories`, `FootprintArea_m2`, `FootprintArea_sqft`, `OccupantCount`, optional baseline fields, source/method/confidence fields, source release fields, and geometry.
 
+## Product Architecture
+
+The database is organized around a core structure table plus optional extension tables/views:
+
+- Core structure table: geometry, IDs, location, physical attributes, occupancy attributes, lineage, confidence, and update metadata.
+- Planning extension: zoning, land use, parcel, year built, assessed value, and development context.
+- Flood extension: flood zone, elevation, water proximity, exposure category, and event-specific monitoring fields.
+- Oil and gas extension: wells, pipelines, facilities, buffers, asset proximity, and critical infrastructure context.
+- Weather extension: wind, hail, tornado, storm exposure, roof/height classes, and severe-weather risk overlays.
+- AI extension: suggest-only predictions, model confidence, model version, and features used.
+
+The core table should remain useful on its own. Extensions should add domain context without changing the meaning of source-of-truth structure attributes.
+
 ## Attribute Rules
 
 - Footprints are assigned to cities by representative point first, then largest boundary overlap; full building geometry is preserved.
@@ -193,3 +217,14 @@ Required attributes include `StructureType`, `NumUnits`, `NumStories`, `Footprin
 ## Data Sources
 
 The pipeline records resolved source versions in the run manifest. Public inputs include Census TIGER/Line and Gazetteer files, Overture Maps STAC/GeoParquet, Microsoft dataset links, USACE NSI, Census ACS, and optional parcel services/files.
+
+## AI Predictions
+
+The `US_Structure_AI` branch adds an optional suggest-only AI layer. It predicts missing structure attributes but does not overwrite source-of-truth fields.
+
+```bash
+cp ai_inputs.example.py ai_inputs.py
+python scripts/run_us_ai_pipeline.py
+```
+
+AI output columns include `PredictedStructureType`, `PredictedNumUnits`, `PredictedNumStories`, `PredictedOccupantCount`, `PredictionKind`, `PredictionModelName`, `PredictionModelVersion`, `PredictionConfidence`, and `PredictionFeaturesUsed`. V1 supports `suggest_only` mode only, so authoritative columns such as `StructureType`, `NumUnits`, `NumStories`, and `OccupantCount` remain unchanged.

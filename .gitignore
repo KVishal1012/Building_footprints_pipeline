@@ -22,6 +22,10 @@ env/
 # Local SQL Server run inputs with server names and credentials
 sql_server_inputs.py
 
+# Local AI run inputs and model artifacts
+ai_inputs.py
+models/
+
 # Pipeline data and generated outputs
 cache/
 data/raw/
