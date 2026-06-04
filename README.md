@@ -11,7 +11,7 @@ Every major attribute should answer:
 - How confident is it?
 - Was it authoritative, derived, estimated, or AI-suggested?
 
-See [docs/product_map.md](docs/product_map.md) for the product map.
+See [docs/product_map.md](docs/product_map.md) for the v2 product map, including data freshness, multi-format delivery, coverage tiers, compliance positioning, and GeoSentinel integration.
 
 The pipeline uses Census TIGER/Line place boundaries for reproducible city coverage, Overture Maps, Microsoft Global ML Building Footprints, SQL Server authoritative sources, USACE NSI and ACS, optional parcel layers, and optional OSM enrichment.
 

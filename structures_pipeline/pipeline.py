@@ -34,6 +34,34 @@ from structures_pipeline.validation import validate_output, write_city_metrics
 LOGGER = logging.getLogger(__name__)
 
 
+# Populate audit and freshness fields for output records before validation/export.
+def apply_audit_fields(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> gpd.GeoDataFrame:
+    """Populate audit and freshness fields for output records before validation/export."""
+    if gdf.empty:
+        return gdf
+    out = gdf.copy()
+    now = utc_now_iso()
+    source_as_of = config.refresh_metadata.get("source_as_of") or config.source_version
+    change_log = config.refresh_metadata.get("change_log") or []
+    if not isinstance(change_log, str):
+        change_log = json.dumps(change_log, sort_keys=True)
+    defaults = {
+        "created_at": now,
+        "updated_at": now,
+        "updated_by": config.updated_by,
+        "change_log": change_log,
+        "last_refreshed": config.refresh_metadata.get("last_refreshed") or now,
+        "source_as_of": source_as_of,
+    }
+    for column, value in defaults.items():
+        if column not in out.columns:
+            out[column] = value
+        else:
+            missing = out[column].isna() | out[column].astype(str).str.strip().eq("")
+            out.loc[missing, column] = value
+    return out
+
+
 # Convert one Census place row into a single-row boundary GeoDataFrame.
 def boundary_for_place(place: pd.Series) -> gpd.GeoDataFrame:
     """Convert one Census place row into a single-row boundary GeoDataFrame."""
@@ -121,6 +149,7 @@ def build_place_structures(
         final = attach_baseline_proximity(final, baseline, baseline_buffer_meters)
     if config.use_ai_predictions:
         final = apply_ai_predictions(final, config)
+    final = apply_audit_fields(final, config)
     metrics = validate_output(final) if not final.empty else {"row_count": 0}
     output_path = city_output_path(config, place)
     metrics.update(

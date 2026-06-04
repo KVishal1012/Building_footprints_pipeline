@@ -75,6 +75,9 @@ def test_two_city_run_writes_outputs(monkeypatch, tmp_path):
     assert result["qa_path"].exists()
     assert result["manifest_path"].exists()
     assert len(result["dataframe"]) == 2
+    assert result["dataframe"]["created_at"].notna().all()
+    assert result["dataframe"]["last_refreshed"].notna().all()
+    assert result["dataframe"]["updated_by"].eq("structures_pipeline").all()
     assert result["sql_export"]["rows_exported"] == 2
     with sqlite3.connect(tmp_path / "export.sqlite") as conn:
         count = conn.execute("SELECT COUNT(*) FROM structures_out").fetchone()[0]

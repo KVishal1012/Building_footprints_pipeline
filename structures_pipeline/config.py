@@ -39,6 +39,9 @@ class PipelineConfig:
     ai_model_dir: Path = Path("models/us_structure_ai")
     ai_prediction_mode: str = "suggest_only"
     ai_min_confidence: float = 0.70
+    updated_by: str = "structures_pipeline"
+    release_id: str | None = None
+    refresh_metadata: dict | None = None
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     # Normalize path and optional dict-like settings after dataclass creation.
@@ -52,6 +55,7 @@ class PipelineConfig:
         self.sql_footprint_source = dict(self.sql_footprint_source or {})
         self.sql_baseline_source = dict(self.sql_baseline_source or {})
         self.sql_export = dict(self.sql_export or {})
+        self.refresh_metadata = dict(self.refresh_metadata or {})
         self.parcel_sources = dict(self.parcel_sources)
 
     # Directory for per-place GeoParquet outputs partitioned by state FIPS.

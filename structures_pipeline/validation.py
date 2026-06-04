@@ -21,6 +21,15 @@ def validate_output(gdf: gpd.GeoDataFrame) -> dict:
     if gdf["StructureID"].duplicated().any():
         duplicates = int(gdf["StructureID"].duplicated().sum())
         raise ValueError(f"Output has duplicate StructureID values: {duplicates}")
+    audit_columns = ["created_at", "updated_at", "updated_by", "change_log", "last_refreshed", "source_as_of"]
+    for column in audit_columns:
+        empty = gdf[column].isna() | gdf[column].astype(str).str.strip().eq("")
+        if empty.any():
+            raise ValueError(f"Output has empty audit/freshness field: {column}")
+    for column in ("LoadSource", "RawDataSource"):
+        text = gdf[column].fillna("").astype(str).str.lower()
+        if text.str.contains("ai|ml_inference|prediction", regex=True).any():
+            raise ValueError(f"AI/model values cannot be used as {column}")
 
     geometry_not_empty = gdf.geometry.notna() & ~gdf.geometry.is_empty
     geometry_valid = gdf.geometry.is_valid.fillna(False)
