@@ -42,6 +42,10 @@ class PipelineConfig:
     updated_by: str = "structures_pipeline"
     release_id: str | None = None
     refresh_metadata: dict | None = None
+    coverage_config: dict | None = None
+    delivery_formats: list[str] = field(default_factory=list)
+    delivery_output_dir: Path = Path("data/delivery")
+    postgis_export: dict | None = None
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     # Normalize path and optional dict-like settings after dataclass creation.
@@ -52,10 +56,14 @@ class PipelineConfig:
         self.raw_dir = Path(self.raw_dir)
         self.cache_dir = Path(self.cache_dir)
         self.ai_model_dir = Path(self.ai_model_dir)
+        self.delivery_output_dir = Path(self.delivery_output_dir)
         self.sql_footprint_source = dict(self.sql_footprint_source or {})
         self.sql_baseline_source = dict(self.sql_baseline_source or {})
         self.sql_export = dict(self.sql_export or {})
         self.refresh_metadata = dict(self.refresh_metadata or {})
+        self.coverage_config = dict(self.coverage_config or {})
+        self.delivery_formats = list(self.delivery_formats or [])
+        self.postgis_export = dict(self.postgis_export or {})
         self.parcel_sources = dict(self.parcel_sources)
 
     # Directory for per-place GeoParquet outputs partitioned by state FIPS.
@@ -90,6 +98,7 @@ class PipelineConfig:
             self.output_dir,
             self.raw_dir,
             self.cache_dir,
+            self.delivery_output_dir,
             self.cities_output_dir,
             self.master_output_dir,
             self.manifest_dir,

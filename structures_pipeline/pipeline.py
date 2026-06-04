@@ -11,6 +11,8 @@ from structures_pipeline.ai import apply_ai_predictions
 from structures_pipeline.attributes import finalize_attributes
 from structures_pipeline.census import parse_place, place_slug, resolve_census_year, select_places
 from structures_pipeline.config import PipelineConfig
+from structures_pipeline.coverage import write_coverage_outputs
+from structures_pipeline.delivery import export_delivery_formats
 from structures_pipeline.geometry import normalize_boundary
 from structures_pipeline.sources import (
     attach_nsi_attributes,
@@ -245,7 +247,12 @@ def build_places(
     metrics: list[dict] = []
     city_paths: list[Path] = []
     frames: list[gpd.GeoDataFrame] = []
-    keep_dataframe = bool(config.return_dataframe or config.sql_export)
+    keep_dataframe = bool(
+        config.return_dataframe
+        or config.sql_export
+        or config.delivery_formats
+        or config.coverage_config.get("write_outputs", False)
+    )
 
     for _, place in places.iterrows():
         source = None
@@ -290,6 +297,12 @@ def build_places(
     sql_export_result = None
     if config.sql_export:
         sql_export_result = export_dataframe_to_sql_server(final_dataframe, config.sql_export)
+    delivery_paths = export_delivery_formats(final_dataframe, config) if config.delivery_formats else {}
+    coverage_paths = (
+        write_coverage_outputs(final_dataframe, config)
+        if config.coverage_config.get("write_outputs", False)
+        else {}
+    )
 
     result = {
         "city_paths": city_paths,
@@ -298,6 +311,8 @@ def build_places(
         "manifest_path": manifest_path,
         "metrics": metrics,
         "sql_export": sql_export_result,
+        "delivery_paths": delivery_paths,
+        "coverage_paths": coverage_paths,
     }
     if keep_dataframe:
         result["dataframe"] = final_dataframe
