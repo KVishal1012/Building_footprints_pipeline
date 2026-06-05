@@ -10,7 +10,7 @@ The original product map was architecturally sound. This revision addresses four
 | Original Gap | Addressed By |
 | --- | --- |
 | No data freshness or refresh cadence defined | Automated refresh pipeline added to Phase 2 |
-| SQL Server-only delivery limits buyer base | Multi-format delivery layer promoted to Phase 2 |
+| SQL Server-only delivery limits buyer base | Supabase/Postgres canonical database plus multi-format delivery promoted to Phase 2 |
 | Coverage gaps in mid-tier cities unaddressed | Coverage tier model and gap registry added to Phase 2 |
 | Competitive moat understated | Compliance and provenance GTM story formalized as core positioning |
 
@@ -73,7 +73,7 @@ What changed from v1:
 
 | Phase | Name | Timeline | Key Deliverables |
 | --- | --- | --- | --- |
-| 1 | Trusted Core Database | Months 1-2 | Schema, SQL Server and PostGIS export, source-of-truth model, provenance fields, audit trail design |
+| 1 | Trusted Core Database | Months 1-2 | Supabase/Postgres canonical schema, SQL Server and PostGIS delivery sync, source-of-truth model, provenance fields, audit trail design |
 | 2 | Coverage + Delivery | Months 2-4 | Refresh pipeline, multi-format API, coverage tier model, gap registry, attribute completeness dashboard |
 | 3 | AI Assistance | Months 4-6 | Suggest-only gap-filling, model provenance fields, confidence thresholding, no authoritative overwrite |
 | 4 | Domain Extensions | Months 6-9 | Flood, oil and gas, weather, planning extension tables with vertical-specific attribute sets |
@@ -110,7 +110,8 @@ This phase is restructured because delivery format and data freshness are sales 
 ### Multi-Format Delivery
 
 - REST API with GeoJSON and flat JSON responses.
-- PostGIS-compatible WKB/WKT export alongside SQL Server export.
+- Supabase REST/PostgREST API from the canonical `public.structures` table.
+- PostGIS-compatible WKB/WKT export alongside SQL Server delivery sync.
 - CSV and Parquet bulk export for analytics teams.
 - geoconv integration for on-demand format conversion to GeoPackage, Shapefile, and FlatGeobuf.
 
@@ -228,7 +229,7 @@ These are three distinct products with compounding value.
 | Area | V1 | V2 |
 | --- | --- | --- |
 | Data freshness | Not addressed | Refresh pipeline + cadence model in Phase 2 |
-| Delivery formats | SQL Server only until Phase 5 | REST API + PostGIS + Parquet promoted to Phase 2 |
+| Delivery formats | SQL Server only until Phase 5 | Supabase API + PostGIS + Parquet promoted to Phase 2 |
 | Coverage gaps | Not addressed | Tier model + gap registry + coverage API in Phase 2 |
 | GTM positioning | Data vendor story | Compliance infrastructure + audit-ready provenance story |
 | Competitive moat | Unstated | Provenance contract + compliance angle + audit trail |

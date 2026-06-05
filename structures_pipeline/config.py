@@ -47,6 +47,7 @@ class PipelineConfig:
     delivery_output_dir: Path = Path("data/delivery")
     postgis_export: dict | None = None
     domain_extensions: list[str] = field(default_factory=list)
+    canonical_database: dict | None = None
     write_release_metadata: bool = False
     release_output_dir: Path = Path("data/delivery/release")
     parcel_sources: dict[str, dict] = field(default_factory=dict)
@@ -68,6 +69,18 @@ class PipelineConfig:
         self.delivery_formats = list(self.delivery_formats or [])
         self.postgis_export = dict(self.postgis_export or {})
         self.domain_extensions = list(self.domain_extensions or [])
+        self.canonical_database = dict(
+            self.canonical_database
+            or {
+                "platform": "supabase_postgres",
+                "raw_table": "staging.raw_structures",
+                "source_runs_table": "staging.source_runs",
+                "change_log_table": "staging.change_log",
+                "canonical_table": "public.structures",
+                "coverage_table": "public.coverage_registry",
+                "release_table": "public.release_manifest",
+            }
+        )
         self.release_output_dir = Path(self.release_output_dir)
         self.parcel_sources = dict(self.parcel_sources)
 

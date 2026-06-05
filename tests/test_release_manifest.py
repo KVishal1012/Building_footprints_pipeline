@@ -40,6 +40,8 @@ def test_build_release_manifest_records_delivery_quality_and_coverage():
     assert manifest["release_id"] == "release-test"
     assert manifest["row_count"] == 2
     assert manifest["quality_contract"]["ai_policy"] == "suggest_only_never_overwrite"
+    assert manifest["quality_contract"]["source_of_truth"] == "public.structures"
+    assert manifest["quality_contract"]["canonical_database"]["platform"] == "supabase_postgres"
     assert manifest["coverage"]["tier_counts"]["Tier 1"] == 1
     assert manifest["ai"]["prediction_kind_counts"]["ml_inference"] == 1
     assert manifest["delivery"]["formats"] == ["csv", "geojson"]

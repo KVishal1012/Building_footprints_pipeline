@@ -55,7 +55,8 @@ def build_release_manifest(
         "branch": "US_Structure_AI",
         "row_count": row_count,
         "quality_contract": {
-            "source_of_truth": "authoritative_or_raw_source_fields",
+            "canonical_database": config.canonical_database,
+            "source_of_truth": config.canonical_database.get("canonical_table", "public.structures"),
             "ai_policy": "suggest_only_never_overwrite",
             "provenance_required": True,
             "audit_trail_required": True,
@@ -76,6 +77,7 @@ def build_release_manifest(
             "prediction_kind_counts": prediction_kind_counts,
         },
         "delivery": {
+            "primary_api": "supabase_rest_api",
             "formats": list(config.delivery_formats),
             "outputs": _json_paths(delivery_paths or {}),
             "sql_server_export": json_safe(sql_export),

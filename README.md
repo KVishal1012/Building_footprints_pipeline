@@ -11,7 +11,7 @@ Every major attribute should answer:
 - How confident is it?
 - Was it authoritative, derived, estimated, or AI-suggested?
 
-See [docs/product_map.md](docs/product_map.md) for the v2 product map, including data freshness, multi-format delivery, coverage tiers, compliance positioning, and GeoSentinel integration. Consumer-facing contracts are documented in [docs/data_dictionary.md](docs/data_dictionary.md), [docs/coverage_tiers.md](docs/coverage_tiers.md), [docs/freshness_sla.md](docs/freshness_sla.md), and [docs/provenance_contract.md](docs/provenance_contract.md).
+See [docs/product_map.md](docs/product_map.md) for the v2 product map, including data freshness, multi-format delivery, coverage tiers, compliance positioning, and GeoSentinel integration. The Supabase-first product architecture is documented in [docs/database_architecture.md](docs/database_architecture.md). Consumer-facing contracts are documented in [docs/data_dictionary.md](docs/data_dictionary.md), [docs/coverage_tiers.md](docs/coverage_tiers.md), [docs/freshness_sla.md](docs/freshness_sla.md), and [docs/provenance_contract.md](docs/provenance_contract.md).
 
 The pipeline uses Census TIGER/Line place boundaries for reproducible city coverage, Overture Maps, Microsoft Global ML Building Footprints, SQL Server authoritative sources, USACE NSI and ACS, optional parcel layers, and optional OSM enrichment.
 
@@ -196,7 +196,36 @@ Required attributes include `StructureType`, `NumUnits`, `NumStories`, `Footprin
 
 ## Product Architecture
 
-The database is organized around a core structure table plus optional extension tables/views:
+The product architecture is Supabase/Postgres-first. SQL Server is an optional enterprise delivery sync, not the canonical database.
+
+```text
+Upstream Sources
+PLUTO, Overture, NSI, Assessors, Parcels
+        |
+        v
+Python Ingestion + QA Service
+Railway / Fly.io / scheduled job
+        |
+        +--> Supabase: staging.raw_structures
+        |       Raw source drops, source snapshots, provenance
+        |
+        +--> Change Detector
+        |       Delta detection, refresh metadata, audit log
+        |
+        +--> QA / Provenance Gates
+        |       Required fields, geometry, duplicate IDs, coverage tier, source lineage
+        |
+        +--> Supabase: public.structures
+                Canonical structure database and source of truth
+                    |
+        +-----------+-----------+
+        v           v           v
+ Supabase API   SQL Server    Bulk Export
+ REST/PostgREST enterprise    CSV / Parquet /
+               sync           GeoJSON / WKT
+```
+
+The database is organized around a canonical core structure table plus optional extension tables/views:
 
 - Core structure table: geometry, IDs, location, physical attributes, occupancy attributes, lineage, confidence, and update metadata.
 - Planning extension: zoning, land use, parcel, year built, assessed value, and development context.
