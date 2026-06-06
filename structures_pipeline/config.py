@@ -48,6 +48,17 @@ class PipelineConfig:
     postgis_export: dict | None = None
     domain_extensions: list[str] = field(default_factory=list)
     canonical_database: dict | None = None
+    supabase_url: str | None = None
+    supabase_service_role_env: str = "SUPABASE_SERVICE_ROLE_KEY"
+    refresh_city: str | None = None
+    refresh_state: str | None = None
+    refresh_source_name: str | None = None
+    refresh_source_family: str | None = None
+    refresh_source_as_of: str | None = None
+    refresh_cadence: str | None = None
+    data_refresh_timestamp: str | None = None
+    dry_run: bool = False
+    promote_to_canonical: bool = True
     write_release_metadata: bool = False
     release_output_dir: Path = Path("data/delivery/release")
     parcel_sources: dict[str, dict] = field(default_factory=dict)
@@ -76,6 +87,7 @@ class PipelineConfig:
                 "raw_table": "staging.raw_structures",
                 "source_runs_table": "staging.source_runs",
                 "change_log_table": "staging.change_log",
+                "promotion_failures_table": "staging.promotion_failures",
                 "canonical_table": "public.structures",
                 "coverage_table": "public.coverage_registry",
                 "release_table": "public.release_manifest",

@@ -17,6 +17,7 @@ def test_validate_output_accepts_required_schema():
             "FootprintSource": "overture",
             "CoverageTier": "Tier 4",
             "OccupantCountSource": "acs",
+            "OccupantCount": 3,
             "created_at": "2026-06-04T00:00:00+00:00",
             "updated_at": "2026-06-04T00:00:00+00:00",
             "updated_by": "unit_test",
@@ -59,3 +60,32 @@ def test_validate_output_rejects_ai_as_raw_source():
         assert "RawDataSource" in str(exc)
     else:
         raise AssertionError("Expected RawDataSource validation failure")
+
+
+def test_validate_output_rejects_missing_attribute_datasource():
+    row = {column: pd.NA for column in REQUIRED_OUTPUT_COLUMNS if column != "geometry"}
+    row.update(
+        {
+            "StructureID": "s1",
+            "FootprintArea_m2": 10.0,
+            "LoadSource": "overture",
+            "RawDataSource": "overture",
+            "FootprintSource": "overture",
+            "CoverageTier": "Tier 4",
+            "StructureType": "residential",
+            "created_at": "2026-06-04T00:00:00+00:00",
+            "updated_at": "2026-06-04T00:00:00+00:00",
+            "updated_by": "unit_test",
+            "change_log": "[]",
+            "last_refreshed": "2026-06-04T00:00:00+00:00",
+            "source_as_of": "2026-06",
+        }
+    )
+    gdf = gpd.GeoDataFrame([row], geometry=[box(0, 0, 0.001, 0.001)], crs="EPSG:4326")
+
+    try:
+        validate_output(gdf)
+    except ValueError as exc:
+        assert "StructureTypeSource" in str(exc)
+    else:
+        raise AssertionError("Expected missing attribute datasource validation failure")

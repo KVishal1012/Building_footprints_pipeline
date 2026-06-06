@@ -29,6 +29,11 @@ DATABASE_TABLES = (
         description="Detected inserts, updates, deletes, and source-to-canonical changes.",
     ),
     DatabaseTable(
+        name="staging.promotion_failures",
+        role="qa_failures",
+        description="Rows blocked by QA/provenance gates before canonical promotion.",
+    ),
+    DatabaseTable(
         name="public.structures",
         role="canonical_source_of_truth",
         description="Approved canonical structure database exposed through Supabase APIs.",
@@ -64,6 +69,7 @@ create table if not exists staging.source_runs (
     source_family text not null,
     source_as_of text,
     refresh_cadence text,
+    data_refresh_timestamp timestamptz not null,
     started_at timestamptz not null default now(),
     completed_at timestamptz,
     status text not null default 'running',
@@ -82,7 +88,8 @@ create table if not exists staging.raw_structures (
     state text,
     geometry_wkt text,
     raw_payload jsonb not null,
-    loaded_at timestamptz not null default now()
+    loaded_at timestamptz not null default now(),
+    data_refresh_timestamp timestamptz not null
 );
 
 create table if not exists staging.change_log (
@@ -93,7 +100,18 @@ create table if not exists staging.change_log (
     changed_fields jsonb not null default '[]'::jsonb,
     before_payload jsonb,
     after_payload jsonb,
-    detected_at timestamptz not null default now()
+    detected_at timestamptz not null default now(),
+    data_refresh_timestamp timestamptz
+);
+
+create table if not exists staging.promotion_failures (
+    failure_id bigserial primary key,
+    source_run_id text references staging.source_runs(source_run_id),
+    structure_id text,
+    reason text not null,
+    failed_payload jsonb not null,
+    detected_at timestamptz not null default now(),
+    data_refresh_timestamp timestamptz
 );
 
 create table if not exists public.structures (
@@ -104,11 +122,20 @@ create table if not exists public.structures (
     coverage_tier text not null,
     geometry_wkt text not null,
     structure_type text,
+    structure_type_source text,
+    structure_type_confidence numeric,
     num_units numeric,
+    num_units_source text,
+    num_units_confidence numeric,
     num_stories numeric,
+    num_stories_source text,
+    num_stories_confidence numeric,
     footprint_area_m2 numeric,
     footprint_area_sqft numeric,
     occupant_count numeric,
+    occupant_count_source text,
+    occupant_count_method text,
+    occupant_count_confidence numeric,
     load_source text not null,
     raw_data_source text not null,
     footprint_source text,
@@ -118,6 +145,7 @@ create table if not exists public.structures (
     updated_at timestamptz not null default now(),
     updated_by text not null,
     change_log jsonb not null default '[]'::jsonb,
+    data_refresh_timestamp timestamptz not null,
     last_refreshed timestamptz not null,
     source_as_of text
 );
@@ -129,6 +157,7 @@ create table if not exists public.coverage_registry (
     row_count integer not null,
     completeness jsonb not null default '{}'::jsonb,
     source_summary jsonb not null default '{}'::jsonb,
+    data_refresh_timestamp timestamptz,
     last_refreshed timestamptz,
     source_as_of text,
     primary key (city, state)

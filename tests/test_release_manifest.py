@@ -22,6 +22,7 @@ def _frame():
 def test_build_release_manifest_records_delivery_quality_and_coverage():
     config = PipelineConfig(
         release_id="release-test",
+        data_refresh_timestamp="2026-06-06T12:00:00+00:00",
         delivery_formats=["csv", "geojson"],
         domain_extensions=["flood"],
         use_ai_predictions=True,
@@ -46,6 +47,7 @@ def test_build_release_manifest_records_delivery_quality_and_coverage():
     assert manifest["ai"]["prediction_kind_counts"]["ml_inference"] == 1
     assert manifest["delivery"]["formats"] == ["csv", "geojson"]
     assert manifest["extensions"]["enabled"] == ["flood"]
+    assert manifest["freshness"]["data_refresh_timestamp"] == "2026-06-06T12:00:00+00:00"
 
 
 def test_write_release_manifest_outputs_json(tmp_path):

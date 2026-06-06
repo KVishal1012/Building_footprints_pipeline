@@ -28,6 +28,10 @@ This dictionary documents the core structure table. Domain-specific fields live 
 | `FootprintSource` | Footprint source selected for geometry. |
 | `CoverageTier` | Consumer-facing coverage tier for the city/market. |
 | `*Source`, `*Confidence`, `*Method` | Attribute-level provenance, confidence, and method fields. |
+| `StructureTypeSource` | Data source for `StructureType`. |
+| `NumStoriesSource` | Data source for `NumStories`. |
+| `NumUnitsSource` | Data source for `NumUnits`. |
+| `OccupantCountSource` | Data source for `OccupantCount`. |
 
 ## Core Attributes
 

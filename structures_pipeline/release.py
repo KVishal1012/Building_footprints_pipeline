@@ -62,6 +62,7 @@ def build_release_manifest(
             "audit_trail_required": True,
         },
         "freshness": {
+            "data_refresh_timestamp": config.data_refresh_timestamp,
             "last_refreshed": config.refresh_metadata.get("last_refreshed"),
             "source_as_of": config.refresh_metadata.get("source_as_of") or config.source_version,
             "refresh_cadence": config.refresh_metadata.get("refresh_cadence"),

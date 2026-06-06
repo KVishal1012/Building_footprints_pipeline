@@ -33,6 +33,17 @@ def validate_output(gdf: gpd.GeoDataFrame) -> dict:
         text = gdf[column].fillna("").astype(str).str.lower()
         if text.str.contains("ai|ml_inference|prediction", regex=True).any():
             raise ValueError(f"AI/model values cannot be used as {column}")
+    attribute_sources = {
+        "StructureType": "StructureTypeSource",
+        "NumStories": "NumStoriesSource",
+        "NumUnits": "NumUnitsSource",
+        "OccupantCount": "OccupantCountSource",
+    }
+    for value_column, source_column in attribute_sources.items():
+        has_value = gdf[value_column].notna() & gdf[value_column].astype(str).str.strip().ne("")
+        missing_source = gdf[source_column].isna() | gdf[source_column].astype(str).str.strip().eq("")
+        if (has_value & missing_source).any():
+            raise ValueError(f"Output has {value_column} values without {source_column}")
 
     geometry_not_empty = gdf.geometry.notna() & ~gdf.geometry.is_empty
     geometry_valid = gdf.geometry.is_valid.fillna(False)
