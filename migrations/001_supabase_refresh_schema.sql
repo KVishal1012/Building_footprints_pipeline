@@ -1,66 +1,3 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class DatabaseTable:
-    name: str
-    role: str
-    description: str
-
-
-CANONICAL_DATABASE_PLATFORM = "supabase_postgres"
-
-DATABASE_TABLES = (
-    DatabaseTable(
-        name="staging.raw_structures",
-        role="raw_drop",
-        description="Raw upstream records and source snapshots before QA normalization.",
-    ),
-    DatabaseTable(
-        name="staging.source_runs",
-        role="ingestion_metadata",
-        description="One row per source ingestion run, with source vintage and status.",
-    ),
-    DatabaseTable(
-        name="staging.change_log",
-        role="delta_logic",
-        description="Detected inserts, updates, deletes, and source-to-canonical changes.",
-    ),
-    DatabaseTable(
-        name="staging.promotion_failures",
-        role="qa_failures",
-        description="Rows blocked by QA/provenance gates before canonical promotion.",
-    ),
-    DatabaseTable(
-        name="public.structures",
-        role="canonical_source_of_truth",
-        description="Approved canonical structure database exposed through Supabase APIs.",
-    ),
-    DatabaseTable(
-        name="public.coverage_registry",
-        role="coverage_metadata",
-        description="City/source coverage tier, completeness, and gap metrics.",
-    ),
-    DatabaseTable(
-        name="public.release_manifest",
-        role="release_metadata",
-        description="Versioned release package metadata and delivery manifest snapshots.",
-    ),
-)
-
-
-# Return the canonical Supabase/Postgres table contract as JSON-safe dictionaries.
-def database_contract() -> list[dict]:
-    """Return the canonical Supabase/Postgres table contract as JSON-safe dictionaries."""
-    return [table.__dict__.copy() for table in DATABASE_TABLES]
-
-
-# Return SQL DDL for the Supabase/Postgres staging and canonical tables.
-def supabase_schema_sql() -> str:
-    """Return SQL DDL for the Supabase/Postgres staging and canonical tables."""
-    return """
 create schema if not exists staging;
 
 create table if not exists staging.source_runs (
@@ -170,4 +107,3 @@ create table if not exists public.release_manifest (
     row_count integer not null,
     manifest jsonb not null
 );
-""".strip()

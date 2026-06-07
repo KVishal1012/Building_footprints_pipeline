@@ -9,7 +9,7 @@ import pandas as pd
 from shapely import wkt
 
 from structures_pipeline.config import PipelineConfig
-from structures_pipeline.refresh import InMemoryRefreshStore, run_refresh_cycle
+from structures_pipeline.refresh import build_refresh_store, run_refresh_cycle
 from structures_pipeline.utils import json_safe
 
 
@@ -42,6 +42,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-refresh-timestamp", help="Explicit ISO datetime stamp for this data refresh.")
     parser.add_argument("--city", default="Manhattan", help="Refresh city.")
     parser.add_argument("--state", default="New York", help="Refresh state.")
+    parser.add_argument("--store", choices=["in_memory", "supabase"], default="in_memory", help="Refresh persistence store.")
+    parser.add_argument("--supabase-url", help="Supabase project URL for --store supabase.")
+    parser.add_argument("--supabase-service-role-env", default="SUPABASE_SERVICE_ROLE_KEY", help="Env var containing Supabase service role key.")
     parser.add_argument("--dry-run", action="store_true", help="Compute staging/deltas without mutating the store.")
     parser.add_argument("--no-promote", action="store_true", help="Run QA but do not promote into canonical structures.")
     return parser.parse_args()
@@ -60,16 +63,19 @@ def main() -> None:
         refresh_source_as_of=args.source_as_of,
         refresh_cadence=args.refresh_cadence,
         data_refresh_timestamp=args.data_refresh_timestamp,
+        supabase_url=args.supabase_url,
+        supabase_service_role_env=args.supabase_service_role_env,
         dry_run=args.dry_run,
         promote_to_canonical=not args.no_promote,
     )
+    store = build_refresh_store(config, args.store)
     result = run_refresh_cycle(
         args.source_name,
         args.city,
         args.state,
         config,
         source_frame=source_frame,
-        store=InMemoryRefreshStore(),
+        store=store,
     )
     summary = {
         "source_run_id": result["source_run"]["source_run_id"],
@@ -80,6 +86,7 @@ def main() -> None:
         "promoted_count": result["promotion"]["promoted_count"],
         "failed_count": result["promotion"]["failed_count"],
         "dry_run": args.dry_run,
+        "store": args.store,
     }
     print(json.dumps(json_safe(summary), indent=2, sort_keys=True))
 

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from structures_pipeline.database_contract import (
     CANONICAL_DATABASE_PLATFORM,
     database_contract,
@@ -31,3 +33,15 @@ def test_supabase_schema_sql_contains_required_tables_and_gates():
     assert "occupant_count_source text" in sql
     assert "attribute_provenance jsonb" in sql
     assert "ai_suggestions jsonb" in sql
+
+
+def test_supabase_refresh_migration_contains_live_schema_contract():
+    migration = Path("migrations/001_supabase_refresh_schema.sql").read_text().lower()
+
+    assert "create table if not exists staging.source_runs" in migration
+    assert "create table if not exists public.structures" in migration
+    assert "structure_type_source text" in migration
+    assert "num_stories_source text" in migration
+    assert "num_units_source text" in migration
+    assert "occupant_count_source text" in migration
+    assert "data_refresh_timestamp timestamptz not null" in migration

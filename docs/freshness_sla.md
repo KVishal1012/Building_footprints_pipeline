@@ -28,6 +28,7 @@ Dry-run a prepared Manhattan source file without promoting rows:
 
 ```bash
 python scripts/run_refresh_pipeline.py \
+  --store in_memory \
   --source-file data/prepared/manhattan_structures.parquet \
   --source-name nyc_pluto \
   --source-family assessor \
@@ -43,6 +44,9 @@ Run a production refresh cycle from the prepared source file:
 
 ```bash
 python scripts/run_refresh_pipeline.py \
+  --store supabase \
+  --supabase-url https://YOUR_PROJECT.supabase.co \
+  --supabase-service-role-env SUPABASE_SERVICE_ROLE_KEY \
   --source-file data/prepared/manhattan_structures.parquet \
   --source-name nyc_pluto \
   --source-family assessor \

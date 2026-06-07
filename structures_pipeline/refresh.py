@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -8,6 +9,7 @@ from typing import Iterable
 
 import geopandas as gpd
 import pandas as pd
+import requests
 from shapely import wkt
 
 from structures_pipeline.config import PipelineConfig
@@ -31,6 +33,58 @@ RAW_REQUIRED_FIELDS = [
     "loaded_at",
     "data_refresh_timestamp",
 ]
+
+CANONICAL_TO_DB_COLUMNS = {
+    "StructureID": "structure_id",
+    "City": "city",
+    "State": "state",
+    "Country": "country",
+    "CoverageTier": "coverage_tier",
+    "geometry_wkt": "geometry_wkt",
+    "StructureType": "structure_type",
+    "StructureTypeSource": "structure_type_source",
+    "StructureTypeConfidence": "structure_type_confidence",
+    "NumUnits": "num_units",
+    "NumUnitsSource": "num_units_source",
+    "NumUnitsConfidence": "num_units_confidence",
+    "NumStories": "num_stories",
+    "NumStoriesSource": "num_stories_source",
+    "NumStoriesConfidence": "num_stories_confidence",
+    "FootprintArea_m2": "footprint_area_m2",
+    "FootprintArea_sqft": "footprint_area_sqft",
+    "OccupantCount": "occupant_count",
+    "OccupantCountSource": "occupant_count_source",
+    "OccupantCountMethod": "occupant_count_method",
+    "OccupantCountConfidence": "occupant_count_confidence",
+    "LoadSource": "load_source",
+    "RawDataSource": "raw_data_source",
+    "FootprintSource": "footprint_source",
+    "created_at": "created_at",
+    "updated_at": "updated_at",
+    "updated_by": "updated_by",
+    "change_log": "change_log",
+    "data_refresh_timestamp": "data_refresh_timestamp",
+    "last_refreshed": "last_refreshed",
+    "source_as_of": "source_as_of",
+}
+DB_TO_CANONICAL_COLUMNS = {value: key for key, value in CANONICAL_TO_DB_COLUMNS.items()}
+
+
+# Convert pandas/numpy values into JSON-compatible primitives for database writes.
+def _json_ready(value):
+    """Convert pandas/numpy values into JSON-compatible primitives for database writes."""
+    if isinstance(value, dict):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(item) for item in value]
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return json_safe(value)
 
 
 @dataclass
@@ -94,6 +148,232 @@ class InMemoryRefreshStore:
     def upsert_release_manifest(self, manifest: dict) -> None:
         """Store one release manifest snapshot."""
         self.release_manifests[manifest["release_id"]] = deepcopy(manifest)
+
+
+class SupabaseRefreshStore:
+    """Persist refresh workflow rows through Supabase's PostgREST API."""
+
+    def __init__(
+        self,
+        config: PipelineConfig,
+        *,
+        session: requests.Session | None = None,
+        service_key: str | None = None,
+    ) -> None:
+        self.config = config
+        self.supabase_url = (config.supabase_url or "").rstrip("/")
+        if not self.supabase_url:
+            raise ValueError("Supabase store requires config.supabase_url")
+        self.service_key = service_key or os.environ.get(config.supabase_service_role_env)
+        if not self.service_key:
+            raise ValueError(f"Missing Supabase service key in {config.supabase_service_role_env}")
+        self.session = session or requests.Session()
+
+    # Return a schema/table pair from the configured canonical database contract.
+    def _table_parts(self, config_key: str) -> tuple[str, str]:
+        """Return a schema/table pair from the configured canonical database contract."""
+        table_name = self.config.canonical_database[config_key]
+        schema, _, table = table_name.partition(".")
+        return schema or "public", table or schema
+
+    # Build auth and schema headers for one PostgREST request.
+    def _headers(self, schema: str, *, write: bool) -> dict:
+        """Build auth and schema headers for one PostgREST request."""
+        headers = {
+            "apikey": self.service_key,
+            "Authorization": f"Bearer {self.service_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        profile = "Content-Profile" if write else "Accept-Profile"
+        headers[profile] = schema
+        return headers
+
+    # Execute a PostgREST request and return decoded JSON when present.
+    def _request(
+        self,
+        method: str,
+        config_key: str,
+        *,
+        payload=None,
+        params: dict | None = None,
+        upsert_key: str | None = None,
+    ):
+        """Execute a PostgREST request and return decoded JSON when present."""
+        schema, table = self._table_parts(config_key)
+        request_params = dict(params or {})
+        headers = self._headers(schema, write=method.upper() != "GET")
+        if upsert_key:
+            request_params["on_conflict"] = upsert_key
+            headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
+        elif method.upper() != "GET":
+            headers["Prefer"] = "return=minimal"
+        response = self.session.request(
+            method,
+            f"{self.supabase_url}/rest/v1/{table}",
+            headers=headers,
+            params=request_params,
+            json=_json_ready(payload) if payload is not None else None,
+            timeout=int(self.config.request_timeout_sec),
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(f"Supabase {method} {schema}.{table} failed: {response.status_code} {response.text}")
+        if not response.text:
+            return None
+        try:
+            return response.json()
+        except ValueError:
+            return None
+
+    # Persist or replace one source run metadata row.
+    def upsert_source_run(self, row: dict) -> None:
+        """Persist or replace one source run metadata row."""
+        self._request("POST", "source_runs_table", payload=row, upsert_key="source_run_id")
+
+    # Append staged raw rows for a source run.
+    def insert_raw_rows(self, rows: Iterable[dict]) -> None:
+        """Append staged raw rows for a source run."""
+        rows = list(rows)
+        if rows:
+            self._request("POST", "raw_table", payload=rows)
+
+    # Return raw rows staged for one source run.
+    def raw_rows_for_run(self, source_run_id: str) -> list[dict]:
+        """Return raw rows staged for one source run."""
+        return self._request("GET", "raw_table", params={"source_run_id": f"eq.{source_run_id}"}) or []
+
+    # Append change detector results.
+    def insert_change_rows(self, rows: Iterable[dict]) -> None:
+        """Append change detector results."""
+        rows = list(rows)
+        if rows:
+            self._request("POST", "change_log_table", payload=rows)
+
+    # Return detected change rows for one source run.
+    def changes_for_run(self, source_run_id: str) -> list[dict]:
+        """Return detected change rows for one source run."""
+        return self._request("GET", "change_log_table", params={"source_run_id": f"eq.{source_run_id}"}) or []
+
+    # Append rows blocked by promotion QA.
+    def insert_promotion_failures(self, rows: Iterable[dict]) -> None:
+        """Append rows blocked by promotion QA."""
+        rows = list(rows)
+        if rows:
+            self._request("POST", "promotion_failures_table", payload=rows)
+
+    # Upsert approved canonical records.
+    def upsert_canonical_rows(self, rows: Iterable[dict]) -> None:
+        """Upsert approved canonical records."""
+        db_rows = [canonical_row_to_db(row) for row in rows]
+        if db_rows:
+            self._request("POST", "canonical_table", payload=db_rows, upsert_key="structure_id")
+
+    # Return canonical records as dictionaries.
+    def canonical_rows(self) -> list[dict]:
+        """Return canonical records as dictionaries."""
+        rows = self._request("GET", "canonical_table") or []
+        return [canonical_row_from_db(row) for row in rows]
+
+    # Store coverage registry rows keyed by city/state.
+    def upsert_coverage_rows(self, rows: Iterable[dict]) -> None:
+        """Store coverage registry rows keyed by city/state."""
+        db_rows = [coverage_row_to_db(row) for row in rows]
+        if db_rows:
+            self._request("POST", "coverage_table", payload=db_rows, upsert_key="city,state")
+
+    # Store one release manifest snapshot.
+    def upsert_release_manifest(self, manifest: dict) -> None:
+        """Store one release manifest snapshot."""
+        row = {
+            "release_id": manifest["release_id"],
+            "schema_version": manifest.get("schema_version", "2.0"),
+            "row_count": int(manifest.get("row_count") or 0),
+            "manifest": manifest,
+        }
+        self._request("POST", "release_table", payload=row, upsert_key="release_id")
+
+
+# Convert a canonical pipeline row into the public.structures database shape.
+def canonical_row_to_db(row: dict) -> dict:
+    """Convert a canonical pipeline row into the public.structures database shape."""
+    db_row = {db_key: _json_ready(row.get(source_key)) for source_key, db_key in CANONICAL_TO_DB_COLUMNS.items()}
+    db_row["attribute_provenance"] = {
+        "structure_type": {
+            "source": db_row.get("structure_type_source"),
+            "confidence": db_row.get("structure_type_confidence"),
+        },
+        "num_units": {
+            "source": db_row.get("num_units_source"),
+            "confidence": db_row.get("num_units_confidence"),
+        },
+        "num_stories": {
+            "source": db_row.get("num_stories_source"),
+            "confidence": db_row.get("num_stories_confidence"),
+        },
+        "occupant_count": {
+            "source": db_row.get("occupant_count_source"),
+            "method": db_row.get("occupant_count_method"),
+            "confidence": db_row.get("occupant_count_confidence"),
+        },
+    }
+    db_row["ai_suggestions"] = {
+        "structure_type": _json_ready(row.get("PredictedStructureType")),
+        "num_units": _json_ready(row.get("PredictedNumUnits")),
+        "num_stories": _json_ready(row.get("PredictedNumStories")),
+        "occupant_count": _json_ready(row.get("PredictedOccupantCount")),
+        "prediction_kind": _json_ready(row.get("PredictionKind")),
+        "confidence": _json_ready(row.get("PredictionConfidence")),
+    }
+    return db_row
+
+
+# Convert a public.structures database row back into the canonical pipeline shape.
+def canonical_row_from_db(row: dict) -> dict:
+    """Convert a public.structures database row back into the canonical pipeline shape."""
+    converted = {canonical_key: row.get(db_key) for db_key, canonical_key in DB_TO_CANONICAL_COLUMNS.items()}
+    return {**row, **converted}
+
+
+# Convert gap-registry metrics into public.coverage_registry shape.
+def coverage_row_to_db(row: dict) -> dict:
+    """Convert gap-registry metrics into public.coverage_registry shape."""
+    return {
+        "city": _json_ready(row.get("City")),
+        "state": _json_ready(row.get("State")),
+        "coverage_tier": _json_ready(row.get("CoverageTier")),
+        "row_count": int(row.get("row_count") or 0),
+        "completeness": {
+            "structure_type": _json_ready(row.get("structure_type_completeness")),
+            "num_units": _json_ready(row.get("num_units_completeness")),
+            "num_stories": _json_ready(row.get("num_stories_completeness")),
+            "occupant_count": _json_ready(row.get("occupant_count_completeness")),
+        },
+        "source_summary": {
+            "has_authoritative_source": bool(row.get("has_authoritative_source")),
+            "has_nsi": bool(row.get("has_nsi")),
+            "has_overture": bool(row.get("has_overture")),
+            "has_osm": bool(row.get("has_osm")),
+        },
+        "data_refresh_timestamp": _json_ready(row.get("data_refresh_timestamp")),
+        "last_refreshed": _json_ready(row.get("last_refreshed")),
+        "source_as_of": _json_ready(row.get("source_as_of")),
+    }
+
+
+# Build the configured refresh store for local, dry-run, or production runs.
+def build_refresh_store(
+    config: PipelineConfig,
+    store_name: str = "in_memory",
+    *,
+    session: requests.Session | None = None,
+    service_key: str | None = None,
+):
+    """Build the configured refresh store for local, dry-run, or production runs."""
+    if config.dry_run or store_name == "in_memory":
+        return InMemoryRefreshStore()
+    if store_name == "supabase":
+        return SupabaseRefreshStore(config, session=session, service_key=service_key)
+    raise ValueError(f"Unsupported refresh store: {store_name}")
 
 
 # Build a deterministic source run id from source, location, and timestamp when not provided.
@@ -337,7 +617,8 @@ def detect_structure_changes(
     """Compare staged rows to canonical records and write change-log rows."""
     raw_rows = store.raw_rows_for_run(source_run_id)
     canonical_rows = store.canonical_rows()
-    source_run = store.source_runs.get(source_run_id, {})
+    source_runs = getattr(store, "source_runs", {})
+    source_run = source_runs.get(source_run_id, {}) if isinstance(source_runs, dict) else {}
     data_refresh_timestamp = config.data_refresh_timestamp or source_run.get("data_refresh_timestamp")
     matched_ids: set[str] = set()
     changes: list[dict] = []

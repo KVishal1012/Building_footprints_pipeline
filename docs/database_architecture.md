@@ -66,7 +66,7 @@ The refresh layer exposes four Python interfaces:
 | `promote_valid_changes(source_run_id, config)` | Runs QA gates and upserts valid rows into canonical structures. |
 | `run_refresh_cycle(source_name, city, state, config)` | Runs staging, detection, promotion, coverage, and release metadata. |
 
-The local implementation uses an in-memory store for dry-runs and tests. A Supabase-backed store can replace that persistence layer without changing the workflow.
+The local implementation uses an in-memory store for dry-runs and tests. Production runs use the Supabase-backed store through PostgREST with the service role key read from `SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Delivery Positioning
 
