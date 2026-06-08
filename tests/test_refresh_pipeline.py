@@ -158,6 +158,20 @@ def test_dry_run_does_not_mutate_store():
     assert store.source_runs == {}
 
 
+def test_full_refresh_cycle_dry_run_computes_changes_without_mutating_store():
+    store = InMemoryRefreshStore()
+    config = _config(dry_run=True)
+
+    result = run_refresh_cycle("nyc_pluto", "Manhattan", "New York", config, source_frame=_frame(_row()), store=store)
+
+    assert len(result["raw_rows"]) == 1
+    assert [row["change_type"] for row in result["changes"]] == ["insert"]
+    assert result["promotion"]["promoted_count"] == 1
+    assert store.raw_structures == []
+    assert store.canonical_rows() == []
+    assert store.release_manifests == {}
+
+
 def test_full_refresh_cycle_promotes_valid_rows_and_writes_metadata():
     store = InMemoryRefreshStore()
     config = _config(release_id="refresh-test")

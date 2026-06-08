@@ -767,8 +767,15 @@ def run_refresh_cycle(
     refresh = run_source_refresh(source_name, city, state, config, source_frame=source_frame, store=store)
     source_run_id = refresh["source_run"]["source_run_id"]
     config.data_refresh_timestamp = refresh["source_run"]["data_refresh_timestamp"]
-    changes = detect_structure_changes(source_run_id, config, store=store)
-    promotion = promote_valid_changes(source_run_id, config, store=store)
+    working_store = store
+    if config.dry_run:
+        working_store = deepcopy(store)
+        working_store.upsert_source_run(refresh["source_run"])
+        working_store.insert_raw_rows(refresh["raw_rows"])
+    changes = detect_structure_changes(source_run_id, config, store=working_store)
+    if config.dry_run:
+        working_store.insert_change_rows(changes["changes"])
+    promotion = promote_valid_changes(source_run_id, config, store=working_store)
     source_run = refresh["source_run"]
     source_run["completed_at"] = utc_now_iso()
     source_run["status"] = "completed" if promotion["failed_count"] == 0 else "completed_with_failures"
