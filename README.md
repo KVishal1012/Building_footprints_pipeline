@@ -107,6 +107,12 @@ Create a local input module:
 cp sql_server_inputs.example.py sql_server_inputs.py
 ```
 
+For the first Manhattan production pilot, start from the Manhattan template instead:
+
+```bash
+cp sql_server_inputs.manhattan.example.py sql_server_inputs.py
+```
+
 Edit `sql_server_inputs.py`, then run:
 
 ```bash
@@ -123,6 +129,21 @@ The local `sql_server_inputs.py` file is ignored by Git so server names and cred
 - `PIPELINE_OVERRIDES`
 
 Use `FOOTPRINTS` for the authoritative structure table loaded through SQL Server. SQL Server is recorded as the load mechanism, not the raw authority. Set `raw_data_source` and the per-attribute source labels to the real upstream source, such as `nyc_pluto`, `nyc_building_footprints`, `assessor`, or another agency dataset. Overture, OSM, NSI, ACS, and parcels then act as fallback/enrichment sources only where the authoritative raw source does not provide a value.
+
+Before a table export is written, the SQL Server runner:
+
+- preflights the SQL Server connection, baseline table, footprint table, and configured columns
+- returns and prints the final structures dataframe preview
+- exports the dataframe as the last step only
+- blocks populated `StructureType`, `NumStories`, `NumUnits`, or `OccupantCount` values when the matching source column is missing
+- writes only the approved final structure columns plus `geometry_wkt` to SQL Server
+- logs a quality report with row count, exported columns, dropped helper columns, null counts, datasource completeness, and output table details
+
+Run the local verification suite before a production pilot:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m pytest
+```
 
 You can also call the SQL Server module directly from Python:
 

@@ -28,6 +28,7 @@ from structures_pipeline.constants import (
     OVERTURE_STAC_URL,
     PARCEL_FIELD_ALIASES,
     PARCEL_TEXT_COLUMNS,
+    REQUIRED_OUTPUT_COLUMNS,
 )
 from structures_pipeline.geometry import (
     assign_footprints_to_place,
@@ -233,18 +234,119 @@ def _sql_table_parts(table: str) -> tuple[str | None, str]:
     return (parts[0], parts[1]) if len(parts) == 2 else (None, parts[0])
 
 
-# Convert a GeoDataFrame into rows that can be inserted by pandas/SQLAlchemy.
+# Return the approved structure columns that are present and safe for SQL export.
+def approved_sql_export_columns(gdf: gpd.GeoDataFrame, geometry_column: str) -> list[str]:
+    """Return the approved structure columns that are present and safe for SQL export."""
+    approved_without_geometry = [column for column in REQUIRED_OUTPUT_COLUMNS if column != "geometry"]
+    columns = [column for column in approved_without_geometry if column in gdf.columns]
+    columns.append(geometry_column)
+    return columns
+
+
+# Convert a GeoDataFrame into approved rows that can be inserted by pandas/SQLAlchemy.
 def dataframe_for_sql_export(
     gdf: gpd.GeoDataFrame,
     geometry_column: str = "geometry_wkt",
 ) -> pd.DataFrame:
-    """Convert a GeoDataFrame into rows that can be inserted by pandas/SQLAlchemy."""
-    frame = pd.DataFrame(gdf.drop(columns=[gdf.geometry.name], errors="ignore")).copy()
+    """Convert a GeoDataFrame into approved rows that can be inserted by pandas/SQLAlchemy."""
+    approved_without_geometry = [column for column in REQUIRED_OUTPUT_COLUMNS if column != "geometry"]
+    available_columns = [column for column in approved_without_geometry if column in gdf.columns]
+    frame = pd.DataFrame(gdf[available_columns]).copy()
     geometry = gdf.geometry
     if gdf.crs and gdf.crs.to_epsg() != 4326:
         geometry = gdf.to_crs(epsg=4326).geometry
     frame[geometry_column] = geometry.to_wkt()
     return frame
+
+
+# Build a compact export QA report for SQL-only runs.
+def sql_export_quality_report(frame: pd.DataFrame, *, source_columns: list[str] | None = None) -> dict:
+    """Build a compact export QA report for SQL-only runs."""
+    critical_columns = [
+        "StructureID",
+        "StructureType",
+        "NumStories",
+        "NumUnits",
+        "OccupantCount",
+        "StructureTypeSource",
+        "NumStoriesSource",
+        "NumUnitsSource",
+        "OccupantCountSource",
+    ]
+    null_counts = {
+        column: int(frame[column].isna().sum())
+        for column in critical_columns
+        if column in frame.columns
+    }
+    datasource_columns = [
+        "StructureTypeSource",
+        "NumStoriesSource",
+        "NumUnitsSource",
+        "OccupantCountSource",
+    ]
+    datasource_completeness = {
+        column: float(frame[column].notna().mean()) if len(frame) else 0.0
+        for column in datasource_columns
+        if column in frame.columns
+    }
+    report = {
+        "row_count": int(len(frame)),
+        "exported_columns": list(frame.columns),
+        "unexpected_columns_dropped": sorted(set(source_columns or []) - set(frame.columns)),
+        "null_counts": null_counts,
+        "datasource_completeness": datasource_completeness,
+    }
+    allowed_columns = set(REQUIRED_OUTPUT_COLUMNS) - {"geometry"}
+    allowed_columns.add("geometry_wkt")
+    report["source_had_unapproved_columns"] = bool(report["unexpected_columns_dropped"])
+    report["approved_output_contract"] = set(frame.columns).issubset(allowed_columns)
+    return report
+
+
+# Return explicit SQLAlchemy dtypes for important SQL Server export columns.
+def sql_export_dtype_map(frame: pd.DataFrame) -> dict:
+    """Return explicit SQLAlchemy dtypes for important SQL Server export columns."""
+    try:
+        from sqlalchemy import DateTime, Float, Integer, Unicode, UnicodeText
+    except ImportError as exc:
+        raise RuntimeError("sqlalchemy is required for SQL export dtype mapping") from exc
+    text_255 = Unicode(255)
+    dtype = {}
+    for column in frame.columns:
+        lower = str(column).lower()
+        if lower in {"geometry_wkt", "change_log"} or lower.endswith("source"):
+            dtype[column] = UnicodeText()
+        elif lower.endswith("confidence") or lower.endswith("_m") or lower.endswith("_sqft") or lower in {
+            "numunits",
+            "numstories",
+            "occupantcount",
+        }:
+            dtype[column] = Float()
+        elif lower in {"censusyear"}:
+            dtype[column] = Integer()
+        elif lower.endswith("at") or "timestamp" in lower:
+            dtype[column] = DateTime()
+        elif frame[column].dtype == object or str(frame[column].dtype).startswith("string"):
+            dtype[column] = text_255
+    return dtype
+
+
+# Raise when populated attributes lack the datasource columns required for source-of-truth export.
+def validate_attribute_datasources(frame: pd.DataFrame) -> None:
+    """Raise when populated attributes lack the datasource columns required for source-of-truth export."""
+    checks = {
+        "StructureType": "StructureTypeSource",
+        "NumStories": "NumStoriesSource",
+        "NumUnits": "NumUnitsSource",
+        "OccupantCount": "OccupantCountSource",
+    }
+    for value_column, source_column in checks.items():
+        if value_column not in frame.columns or source_column not in frame.columns:
+            continue
+        has_value = frame[value_column].notna() & frame[value_column].astype(str).str.strip().ne("")
+        missing_source = frame[source_column].isna() | frame[source_column].astype(str).str.strip().eq("")
+        if (has_value & missing_source).any():
+            raise ValueError(f"SQL export blocked: {value_column} values require {source_column}")
 
 
 # Export the final structure dataframe to a SQL Server-compatible table.
@@ -273,23 +375,42 @@ def export_dataframe_to_sql_server(
     schema, table_name = _sql_table_parts(table)
     geometry_column = export_config.get("geometry_column") or "geometry_wkt"
     frame = dataframe_for_sql_export(gdf, geometry_column=geometry_column)
+    validate_attribute_datasources(frame)
+    source_columns = [
+        column
+        for column in gdf.columns
+        if column != gdf.geometry.name
+    ] + [geometry_column]
+    quality_report = sql_export_quality_report(frame, source_columns=source_columns)
     engine_kwargs = {}
     if str(connection).lower().startswith("mssql") and export_config.get("fast_executemany", True):
         engine_kwargs["fast_executemany"] = True
-    engine = create_engine(connection, **engine_kwargs)
-    frame.to_sql(
-        table_name,
-        engine,
-        schema=schema,
-        if_exists=export_config.get("if_exists", "fail"),
-        index=False,
-        chunksize=int(export_config.get("chunksize") or 1000),
-    )
+    try:
+        engine = create_engine(connection, **engine_kwargs)
+        dtype = sql_export_dtype_map(frame) if export_config.get("use_explicit_schema", True) else None
+        frame.to_sql(
+            table_name,
+            engine,
+            schema=schema,
+            if_exists=export_config.get("if_exists", "fail"),
+            index=False,
+            chunksize=int(export_config.get("chunksize") or 1000),
+            dtype=dtype,
+        )
+    except Exception as exc:
+        message = str(exc)
+        if "driver" in message.lower() or "odbc" in message.lower():
+            raise RuntimeError(
+                "SQL Server export failed: check the ODBC driver, connection string, credentials, and Encrypt settings. "
+                f"Details: {exc}"
+            ) from exc
+        raise RuntimeError(f"SQL Server export failed for table {table}: {exc}") from exc
     return {
         "table": table,
         "rows_exported": int(len(frame)),
         "geometry_column": geometry_column,
         "if_exists": export_config.get("if_exists", "fail"),
+        "quality_report": quality_report,
     }
 
 

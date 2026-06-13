@@ -4,17 +4,16 @@ from pathlib import Path
 
 from structures_pipeline.sql_server import SqlServerPipelineSettings
 
-# Target places to process. Add more dictionaries for more cities.
+# First production pilot target.
 PLACE_SPECS = [
-    {"city": "Houston", "state": "Texas"},
+    {"city": "New York", "state": "New York"},
 ]
-
-# Use STATE_FILTERS instead of PLACE_SPECS for whole-state runs.
 STATE_FILTERS = None
 ALL_US_CITIES = False
-DATAFRAME_PREVIEW_ROWS = 10
+DATAFRAME_PREVIEW_ROWS = 25
 
 # SQL Server connection and table inputs.
+# Copy this file to sql_server_inputs.py and replace these values locally.
 SQL_SERVER = {
     "server_name": "tcp:YOUR_SERVER,1433",
     "database_name": "YOUR_DATABASE",
@@ -26,47 +25,49 @@ SQL_SERVER = {
     "trust_server_certificate": None,
 }
 
-# Baseline table used to build the buffered area of interest.
+# Baseline table used to define the buffered area of interest. For a Manhattan
+# pilot, this can be an asset, parcel, district, corridor, or study-area table.
 BASELINE = {
-    "table": "dbo.AssetBaseline",
+    "table": "dbo.ManhattanBaseline",
     "geometry_column": "Shape",
-    "id_column": "AssetID",
-    "where": "Status = 'Active'",
+    "id_column": "BaselineID",
+    "where": "Borough = 'Manhattan'",
     "buffer_value": 250,
     "srid": 4326,
     "buffer_unit_to_meters": None,
 }
 
-# Optional authoritative structure table. Fill these columns when SQL Server
-# should be the source of truth for attributes.
+# Authoritative structure/footprint table. The raw_data_source and per-attribute
+# source labels should name the real upstream authority, not SQL Server itself.
 FOOTPRINTS = {
-    "table": "dbo.AuthoritativeStructures",
+    "table": "dbo.NYC_PLUTO_Structures",
     "raw_data_source": "nyc_pluto",
     "geometry_column": "Shape",
-    "id_column": "StructureID",
-    "structure_type_column": "StructureType",
-    "units_column": "NumUnits",
-    "stories_column": "NumStories",
-    "height_column": "HeightM",
-    "occupant_count_column": "OccupantCount",
-    "where": None,
+    "id_column": "BBL",
+    "structure_type_column": "LandUse",
+    "units_column": "UnitsTotal",
+    "stories_column": "NumFloors",
+    "height_column": None,
+    "occupant_count_column": None,
+    "where": "Borough = 'MN'",
     "structure_type_source": "nyc_pluto_land_use",
     "units_source": "nyc_pluto_units_total",
     "stories_source": "nyc_pluto_num_floors",
-    "height_source": "nyc_pluto_height_roof",
-    "occupant_count_source": "nyc_pluto_occupancy",
+    "height_source": None,
+    "occupant_count_source": None,
 }
 
-# Final SQL Server table that receives the exported structures dataframe.
+# Final SQL Server table that receives the approved final structures dataframe.
 OUTPUT = {
-    "table": "dbo.StructuresOutput",
+    "table": "dbo.StructureIntelligence_Manhattan",
     "if_exists": "append",
     "geometry_column": "geometry_wkt",
     "chunksize": 1000,
     "preflight": True,
 }
 
-# Pipeline switches. Local JSON/parquet outputs are disabled by default.
+# Keep the SQL Server path table-only by default. Overture/NSI/ACS remain useful
+# fallback/enrichment sources where authoritative SQL fields are null.
 PIPELINE_OVERRIDES = {
     "data_dir": Path("data"),
     "output_dir": Path("data/output"),
@@ -82,7 +83,6 @@ PIPELINE_OVERRIDES = {
 }
 
 
-# Build the SQL Server settings consumed by the runner.
 def get_settings() -> SqlServerPipelineSettings:
     """Build the SQL Server settings consumed by the runner."""
     return SqlServerPipelineSettings(
@@ -125,7 +125,6 @@ def get_settings() -> SqlServerPipelineSettings:
     )
 
 
-# Return target selectors for run_pipeline.
 def get_target() -> dict:
     """Return target selectors for run_pipeline."""
     return {
@@ -135,7 +134,6 @@ def get_target() -> dict:
     }
 
 
-# Return non-SQL pipeline options.
 def get_pipeline_overrides() -> dict:
     """Return non-SQL pipeline options."""
     return dict(PIPELINE_OVERRIDES)

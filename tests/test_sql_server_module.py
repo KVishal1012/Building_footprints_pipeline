@@ -1,3 +1,5 @@
+import importlib.util
+from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, unquote_plus, urlparse
 
@@ -8,8 +10,10 @@ from structures_pipeline.sql_server import (
     SqlServerPipelineSettings,
     buffer_meters_from_srid,
     build_sql_server_pipeline_config,
+    preflight_sql_server_pipeline,
     run_sql_server_pipeline_from_inputs,
     sql_server_connection_url,
+    validate_sql_server_settings,
 )
 
 
@@ -95,8 +99,77 @@ def test_build_sql_server_pipeline_config_sets_baseline_and_export():
     assert config.sql_footprint_source["stories_source"] == "nyc_pluto_num_floors"
     assert config.sql_footprint_source["occupant_count_source"] == "nyc_pluto_occupancy"
     assert config.sql_export["table"] == "dbo.StructuresOutput"
+    assert config.sql_export["use_explicit_schema"] is True
     assert config.return_dataframe is True
     assert config.write_local_outputs is False
+
+
+def test_validate_sql_server_settings_requires_attribute_source_labels():
+    settings = SqlServerPipelineSettings(
+        server_name="localhost",
+        database_name="gis",
+        output_table="dbo.StructuresOutput",
+        baseline_table="dbo.AssetBaseline",
+        baseline_buffer_value=100,
+        footprint_table="dbo.AuthoritativeStructures",
+        footprint_structure_type_column="StructureType",
+        trusted_connection=True,
+    )
+
+    with pytest.raises(ValueError, match="structure_type_source"):
+        validate_sql_server_settings(settings)
+
+
+def test_preflight_sql_server_pipeline_checks_tables_and_columns(monkeypatch):
+    settings = SqlServerPipelineSettings(
+        server_name="localhost",
+        database_name="gis",
+        output_table="dbo.StructuresOutput",
+        baseline_table="dbo.AssetBaseline",
+        baseline_geom_column="Shape",
+        baseline_id_column="AssetID",
+        baseline_buffer_value=100,
+        footprint_table="dbo.AuthoritativeStructures",
+        footprint_geom_column="Shape",
+        footprint_id_column="StructureID",
+        footprint_structure_type_column="StructureType",
+        footprint_structure_type_source="nyc_pluto_land_use",
+        trusted_connection=True,
+    )
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def execute(self, *_args, **_kwargs):
+            return None
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+    class FakeInspector:
+        def has_table(self, table, schema=None):
+            return (schema, table) in {("dbo", "AssetBaseline"), ("dbo", "AuthoritativeStructures")}
+
+        def get_columns(self, table, schema=None):
+            columns = {
+                ("dbo", "AssetBaseline"): ["Shape", "AssetID"],
+                ("dbo", "AuthoritativeStructures"): ["Shape", "StructureID", "StructureType"],
+            }
+            return [{"name": column} for column in columns[(schema, table)]]
+
+    monkeypatch.setattr("sqlalchemy.create_engine", lambda *_args, **_kwargs: FakeEngine())
+    monkeypatch.setattr("sqlalchemy.inspect", lambda _engine: FakeInspector())
+
+    result = preflight_sql_server_pipeline(settings)
+
+    assert result["status"] == "passed"
+    assert result["checks"][0]["table"] == "dbo.AssetBaseline"
+    assert result["checks"][1]["missing_columns"] == []
 
 
 def test_run_sql_server_pipeline_from_inputs_uses_module_functions(monkeypatch):
@@ -107,6 +180,7 @@ def test_run_sql_server_pipeline_from_inputs_uses_module_functions(monkeypatch):
         baseline_table="dbo.AssetBaseline",
         baseline_buffer_value=100,
         trusted_connection=True,
+        preflight=False,
     )
     input_module = SimpleNamespace(
         get_settings=lambda: settings,
@@ -134,8 +208,28 @@ def test_run_sql_server_pipeline_from_inputs_uses_module_functions(monkeypatch):
     assert captured["place_specs"] == [{"city": "Houston", "state": "Texas"}]
     assert captured["config"].download_missing is False
     assert captured["config"].sql_export["table"] == "dbo.StructuresOutput"
+    assert result["preflight"] is None
 
 
 def test_run_sql_server_pipeline_from_inputs_requires_contract():
     with pytest.raises(ValueError, match="get_settings"):
         run_sql_server_pipeline_from_inputs(SimpleNamespace())
+
+
+def test_manhattan_sql_server_example_exposes_required_contract():
+    example_path = Path(__file__).resolve().parents[1] / "sql_server_inputs.manhattan.example.py"
+    spec = importlib.util.spec_from_file_location("sql_server_inputs_manhattan_example", example_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    settings = module.get_settings()
+    target = module.get_target()
+    overrides = module.get_pipeline_overrides()
+
+    assert settings.output_table == "dbo.StructureIntelligence_Manhattan"
+    assert settings.footprint_raw_data_source == "nyc_pluto"
+    assert settings.footprint_structure_type_source == "nyc_pluto_land_use"
+    assert settings.preflight is True
+    assert target["place_specs"] == [{"city": "New York", "state": "New York"}]
+    assert overrides["write_local_outputs"] is False

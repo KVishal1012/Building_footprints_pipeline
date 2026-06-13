@@ -64,6 +64,7 @@ class SqlServerPipelineSettings:
     output_if_exists: str = "append"
     output_geometry_column: str = "geometry_wkt"
     output_chunksize: int = 1000
+    preflight: bool = True
     buffer_unit_to_meters: float | None = None
     write_local_outputs: bool = False
 
@@ -108,6 +109,128 @@ def sql_server_connection_url(settings: SqlServerPipelineSettings) -> str:
             raise ValueError("SQL Server username and password are required unless trusted_connection=True")
         parts.extend([f"UID={settings.username}", f"PWD={settings.password}"])
     return "mssql+pyodbc:///?odbc_connect=" + quote_plus(";".join(parts))
+
+
+# Split a schema-qualified SQL Server table name into schema and table parts.
+def table_parts(table: str) -> tuple[str | None, str]:
+    """Split a schema-qualified SQL Server table name into schema and table parts."""
+    parts = [part.strip() for part in str(table).split(".") if part.strip()]
+    if not parts or len(parts) > 2:
+        raise ValueError("SQL Server table name must be table or schema.table")
+    return (parts[0], parts[1]) if len(parts) == 2 else (None, parts[0])
+
+
+# Return configured source columns that must exist on the footprint table.
+def configured_footprint_columns(settings: SqlServerPipelineSettings) -> list[str]:
+    """Return configured source columns that must exist on the footprint table."""
+    columns = [
+        settings.footprint_geom_column,
+        settings.footprint_id_column,
+        settings.footprint_structure_type_column,
+        settings.footprint_units_column,
+        settings.footprint_stories_column,
+        settings.footprint_height_column,
+        settings.footprint_occupant_count_column,
+    ]
+    return [column for column in columns if column]
+
+
+# Validate settings before an expensive pipeline/export run.
+def validate_sql_server_settings(settings: SqlServerPipelineSettings) -> dict:
+    """Validate settings before an expensive pipeline/export run."""
+    if settings.output_if_exists not in {"append", "replace", "fail"}:
+        raise ValueError("output_if_exists must be append, replace, or fail")
+    if settings.output_chunksize <= 0:
+        raise ValueError("output_chunksize must be positive")
+    buffer_meters = buffer_meters_from_srid(
+        settings.baseline_buffer_value,
+        settings.baseline_srid,
+        unit_to_meters=settings.buffer_unit_to_meters,
+    )
+    if settings.footprint_table:
+        missing_sources = {
+            "structure_type_source": (settings.footprint_structure_type_column, settings.footprint_structure_type_source),
+            "units_source": (settings.footprint_units_column, settings.footprint_units_source),
+            "stories_source": (settings.footprint_stories_column, settings.footprint_stories_source),
+            "occupant_count_source": (settings.footprint_occupant_count_column, settings.footprint_occupant_count_source),
+        }
+        missing = [
+            source_name
+            for source_name, (value_column, source_label) in missing_sources.items()
+            if value_column and not source_label
+        ]
+        if missing:
+            raise ValueError(f"Footprint attribute columns require source labels: {missing}")
+    return {
+        "server_name": settings.server_name,
+        "database_name": settings.database_name,
+        "baseline_table": settings.baseline_table,
+        "footprint_table": settings.footprint_table,
+        "output_table": settings.output_table,
+        "baseline_buffer_meters": buffer_meters,
+        "output_if_exists": settings.output_if_exists,
+    }
+
+
+# Check SQL Server connectivity and configured table/column availability.
+def preflight_sql_server_pipeline(settings: SqlServerPipelineSettings) -> dict:
+    """Check SQL Server connectivity and configured table/column availability."""
+    try:
+        from sqlalchemy import create_engine, inspect, text
+    except ImportError as exc:
+        raise RuntimeError("sqlalchemy is required for SQL Server preflight") from exc
+
+    summary = validate_sql_server_settings(settings)
+    connection = sql_server_connection_url(settings)
+    try:
+        engine = create_engine(connection)
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        inspector = inspect(engine)
+        checks = []
+        for table_name, required_columns in (
+            (settings.baseline_table, [settings.baseline_geom_column, settings.baseline_id_column]),
+            (settings.footprint_table, configured_footprint_columns(settings)),
+        ):
+            if not table_name:
+                continue
+            schema, table = table_parts(table_name)
+            exists = inspector.has_table(table, schema=schema)
+            available_columns = []
+            if exists:
+                available_columns = [column["name"] for column in inspector.get_columns(table, schema=schema)]
+            missing_columns = [
+                column for column in required_columns if column and column not in available_columns
+            ]
+            checks.append(
+                {
+                    "table": table_name,
+                    "exists": bool(exists),
+                    "required_columns": [column for column in required_columns if column],
+                    "missing_columns": missing_columns,
+                }
+            )
+            if not exists:
+                raise RuntimeError(f"SQL Server preflight failed: table not found: {table_name}")
+            if missing_columns:
+                raise RuntimeError(
+                    f"SQL Server preflight failed: {table_name} is missing columns {missing_columns}"
+                )
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        message = str(exc)
+        if "driver" in message.lower() or "odbc" in message.lower():
+            raise RuntimeError(
+                f"SQL Server preflight failed: ODBC driver or connection issue. "
+                f"Check driver '{settings.driver}', server, credentials, and Encrypt settings. Details: {exc}"
+            ) from exc
+        raise RuntimeError(
+            f"SQL Server preflight failed for {settings.server_name}/{settings.database_name}: {exc}"
+        ) from exc
+    summary["checks"] = checks
+    summary["status"] = "passed"
+    return summary
 
 
 # Create a PipelineConfig with SQL Server baseline capture and final table export.
@@ -165,6 +288,7 @@ def build_sql_server_pipeline_config(
             "if_exists": settings.output_if_exists,
             "geometry_column": settings.output_geometry_column,
             "chunksize": settings.output_chunksize,
+            "use_explicit_schema": True,
         },
         return_dataframe=True,
         write_local_outputs=settings.write_local_outputs,
@@ -181,13 +305,18 @@ def run_sql_server_pipeline(
     **config_overrides,
 ) -> dict:
     """Run the pipeline with SQL Server baseline/export settings and return the result dict."""
+    preflight_result = preflight_sql_server_pipeline(settings) if settings.preflight else None
     config = build_sql_server_pipeline_config(settings, **config_overrides)
-    return run_pipeline(
+    result = run_pipeline(
         place_specs=place_specs,
         state_filters=state_filters,
         all_us_cities=all_us_cities,
         config=config,
     )
+    result["preflight"] = preflight_result
+    if config.sql_export and not result.get("sql_export"):
+        raise RuntimeError("SQL Server export was configured but no export result was produced")
+    return result
 
 
 # Run from a Python input module with get_settings/get_target/get_pipeline_overrides.

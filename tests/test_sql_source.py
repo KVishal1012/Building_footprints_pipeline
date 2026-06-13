@@ -8,12 +8,16 @@ from structures_pipeline.config import PipelineConfig
 from structures_pipeline.sources import (
     _sqlserver_geometry_select,
     attach_baseline_proximity,
+    approved_sql_export_columns,
     buffered_baseline_boundary,
     dataframe_for_sql_export,
     export_dataframe_to_sql_server,
     load_sql_footprints,
     read_sql_baseline_source,
     read_sql_geometry_source,
+    sql_export_dtype_map,
+    sql_export_quality_report,
+    validate_attribute_datasources,
 )
 
 
@@ -161,7 +165,7 @@ def test_sqlserver_geometry_select_uses_spatial_methods():
 
 def test_dataframe_for_sql_export_replaces_geometry_with_wkt():
     gdf = gpd.GeoDataFrame(
-        {"StructureID": ["s1"]},
+        {"StructureID": ["s1"], "City": ["Chicago"], "RawHelperColumn": ["drop-me"]},
         geometry=[box(0, 0, 1, 1)],
         crs="EPSG:4326",
     )
@@ -169,13 +173,80 @@ def test_dataframe_for_sql_export_replaces_geometry_with_wkt():
     frame = dataframe_for_sql_export(gdf)
 
     assert "geometry" not in frame.columns
+    assert "RawHelperColumn" not in frame.columns
+    assert approved_sql_export_columns(gdf, "geometry_wkt") == ["StructureID", "City", "geometry_wkt"]
     assert frame.loc[0, "geometry_wkt"].startswith("POLYGON")
+
+
+def test_sql_export_quality_report_and_datasource_validation():
+    frame = pd.DataFrame(
+        {
+            "StructureID": ["s1"],
+            "StructureType": ["residential"],
+            "StructureTypeSource": ["nyc_pluto_land_use"],
+            "NumStories": [2],
+            "NumStoriesSource": ["nyc_pluto_num_floors"],
+            "NumUnits": [1],
+            "NumUnitsSource": ["nyc_pluto_units_total"],
+            "OccupantCount": [3],
+            "OccupantCountSource": ["nyc_pluto_occupancy"],
+        }
+    )
+
+    validate_attribute_datasources(frame)
+    report = sql_export_quality_report(frame)
+
+    assert report["row_count"] == 1
+    assert report["approved_output_contract"] is True
+    assert report["unexpected_columns_dropped"] == []
+    assert report["null_counts"]["StructureType"] == 0
+    assert report["datasource_completeness"]["StructureTypeSource"] == 1.0
+
+
+def test_validate_attribute_datasources_rejects_missing_source():
+    frame = pd.DataFrame({"NumStories": [2], "NumStoriesSource": [pd.NA]})
+
+    try:
+        validate_attribute_datasources(frame)
+    except ValueError as exc:
+        assert "NumStoriesSource" in str(exc)
+    else:
+        raise AssertionError("Expected missing datasource validation failure")
+
+
+def test_sql_export_dtype_map_includes_geometry_and_source_types():
+    frame = pd.DataFrame(
+        {
+            "StructureID": ["s1"],
+            "StructureTypeSource": ["nyc_pluto_land_use"],
+            "NumStories": [2],
+            "geometry_wkt": ["POINT (0 0)"],
+        }
+    )
+
+    dtype = sql_export_dtype_map(frame)
+
+    assert "geometry_wkt" in dtype
+    assert "StructureTypeSource" in dtype
+    assert "NumStories" in dtype
 
 
 def test_export_dataframe_to_sql_server_writes_sql_table(tmp_path):
     db_path = tmp_path / "export.sqlite"
     gdf = gpd.GeoDataFrame(
-        {"StructureID": ["s1"], "City": ["Chicago"]},
+        {
+            "StructureID": ["s1"],
+            "City": ["Chicago"],
+            "StructureType": ["residential"],
+            "StructureTypeSource": ["nyc_pluto_land_use"],
+            "NumStories": [2],
+            "NumStoriesSource": ["nyc_pluto_num_floors"],
+            "NumUnits": [1],
+            "NumUnitsSource": ["nyc_pluto_units_total"],
+            "OccupantCount": [3],
+            "OccupantCountSource": ["nyc_pluto_occupancy"],
+            "RawHelperColumn": ["drop-me"],
+        },
         geometry=[box(0, 0, 1, 1)],
         crs="EPSG:4326",
     )
@@ -192,6 +263,12 @@ def test_export_dataframe_to_sql_server_writes_sql_table(tmp_path):
 
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute("SELECT StructureID, City, geometry_wkt FROM structures_out").fetchall()
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(structures_out)").fetchall()]
     assert result["rows_exported"] == 1
+    assert result["quality_report"]["datasource_completeness"]["OccupantCountSource"] == 1.0
+    assert result["quality_report"]["unexpected_columns_dropped"] == ["RawHelperColumn"]
+    assert result["quality_report"]["source_had_unapproved_columns"] is True
+    assert result["quality_report"]["approved_output_contract"] is True
+    assert "RawHelperColumn" not in columns
     assert rows[0][0] == "s1"
     assert rows[0][2].startswith("POLYGON")

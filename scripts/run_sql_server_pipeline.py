@@ -41,12 +41,16 @@ def main() -> None:
 
     input_module = load_input_module()
     result = run_sql_server_pipeline_from_inputs(input_module)
+    if result.get("preflight"):
+        LOGGER.info("SQL Server preflight: %s", result["preflight"])
     dataframe = result.get("dataframe")
     if dataframe is not None:
         preview_rows = int(getattr(input_module, "DATAFRAME_PREVIEW_ROWS", 10))
         print(dataframe.head(preview_rows).to_string(index=False))
     if result.get("sql_export"):
         LOGGER.info("Exported SQL Server table: %s", result["sql_export"])
+        if result["sql_export"].get("quality_report"):
+            LOGGER.info("SQL export quality report: %s", result["sql_export"]["quality_report"])
 
 
 if __name__ == "__main__":
