@@ -13,6 +13,16 @@ Every major attribute should answer:
 
 See [docs/product_map.md](docs/product_map.md) for the v2 product map, including data freshness, multi-format delivery, coverage tiers, compliance positioning, and GeoSentinel integration. The Supabase-first product architecture is documented in [docs/database_architecture.md](docs/database_architecture.md). Consumer-facing contracts are documented in [docs/data_dictionary.md](docs/data_dictionary.md), [docs/coverage_tiers.md](docs/coverage_tiers.md), [docs/freshness_sla.md](docs/freshness_sla.md), and [docs/provenance_contract.md](docs/provenance_contract.md).
 
+## Money Path Demo
+
+The first sellable package is the Manhattan Structure Intelligence demo in [sales/manhattan_demo](sales/manhattan_demo). It includes sample canonical structures, attribute provenance, coverage/completeness metrics, a release manifest with passing QA gates, and a one-page pitch for paid custom city builds.
+
+Regenerate it from the committed Manhattan fixture:
+
+```bash
+python scripts/build_manhattan_money_path_package.py
+```
+
 The pipeline uses Census TIGER/Line place boundaries for reproducible city coverage, Overture Maps, Microsoft Global ML Building Footprints, SQL Server authoritative sources, USACE NSI and ACS, optional parcel layers, and optional OSM enrichment.
 
 ## Setup

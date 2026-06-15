@@ -1,0 +1,70 @@
+{
+  "coverage": {
+    "coverage_rows": [
+      {
+        "City": "Manhattan",
+        "CoverageTier": "Tier 1",
+        "State": "New York",
+        "last_refreshed": "2026-06-06T12:00:00+00:00",
+        "num_stories_completeness": 1.0,
+        "num_units_completeness": 1.0,
+        "occupant_count_completeness": 1.0,
+        "raw_sources": "nyc_pluto",
+        "row_count": 2,
+        "source_as_of": "2026-Q2",
+        "structure_type_completeness": 1.0
+      }
+    ],
+    "source_counts": {
+      "nyc_pluto": 2
+    }
+  },
+  "delivery": {
+    "included_files": [
+      "sample_structures.csv",
+      "provenance_snapshot.csv",
+      "coverage_gap_registry.csv",
+      "release_manifest.json",
+      "one_page_pitch.md"
+    ],
+    "production_options": [
+      "Supabase REST/PostgREST",
+      "SQL Server sync",
+      "PostGIS/WKT",
+      "CSV",
+      "Parquet",
+      "GeoJSON"
+    ]
+  },
+  "freshness": {
+    "data_refresh_timestamp": "2026-06-06T12:00:00+00:00",
+    "last_refreshed": "2026-06-06T12:00:00+00:00",
+    "refresh_cadence": "quarterly for PLUTO/assessor-style authoritative sources",
+    "source_as_of": "2026-Q2"
+  },
+  "generated_at": "2026-06-06T12:00:00+00:00",
+  "known_gaps": [
+    "Demo package contains a small Manhattan sample, not full borough coverage.",
+    "Full buyer delivery requires current authoritative source acquisition for the requested city/AOI.",
+    "AI predictions are not used as authoritative values in this demo package."
+  ],
+  "market": "Manhattan, New York",
+  "offer": "Audit-ready structure database for a target city or risk area",
+  "pricing_targets": {
+    "api_or_database_access": "$500-$2k/month",
+    "custom_city_build": "$5k-$25k",
+    "pilot_dataset": "$2k-$10k",
+    "regional_enterprise_license": "$25k-$100k+"
+  },
+  "product": "Structure Intelligence Database",
+  "quality_contract": {
+    "ai_policy": "suggest_only_never_overwrite",
+    "audit_trail_required": true,
+    "provenance_required": true,
+    "release_gate_blockers": [],
+    "release_gate_status": "passed",
+    "source_of_truth": "public.structures"
+  },
+  "release_id": "manhattan-demo-2026-q2",
+  "row_count": 2
+}

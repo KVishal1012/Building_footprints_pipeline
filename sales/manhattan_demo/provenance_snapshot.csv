@@ -1,0 +1,3 @@
+StructureID,StructureTypeSource,StructureTypeConfidence,NumStoriesSource,NumStoriesConfidence,NumUnitsSource,NumUnitsConfidence,OccupantCountSource,OccupantCountMethod,OccupantCountConfidence,RawDataSource,LoadSource,FootprintSource
+nyc_pluto_mn_000001,nyc_pluto_land_use,0.95,nyc_pluto_num_floors,0.95,nyc_pluto_units_total,0.95,nyc_pluto_occupancy,source_authoritative_count,0.95,nyc_pluto,nyc_pluto,nyc_pluto
+nyc_pluto_mn_000002,nyc_pluto_land_use,0.95,nyc_pluto_num_floors,0.95,nyc_pluto_units_total,0.95,nyc_pluto_occupancy,source_authoritative_count,0.95,nyc_pluto,nyc_pluto,nyc_pluto

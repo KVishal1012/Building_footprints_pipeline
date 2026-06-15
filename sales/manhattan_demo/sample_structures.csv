@@ -1,0 +1,3 @@
+StructureID,City,State,StructureType,NumStories,NumUnits,OccupantCount,FootprintArea_sqft,CoverageTier,data_refresh_timestamp,last_refreshed,source_as_of,geometry_wkt
+nyc_pluto_mn_000001,Manhattan,New York,residential,12,24,58,9149.32,Tier 1,2026-06-06T12:00:00+00:00,2026-06-06T12:00:00+00:00,2026-Q2,"POLYGON ((-73.9857 40.7482, -73.9857 40.7484, -73.9854 40.7484, -73.9854 40.7482, -73.9857 40.7482))"
+nyc_pluto_mn_000002,Manhattan,New York,commercial,22,4,180,12916.69,Tier 1,2026-06-06T12:00:00+00:00,2026-06-06T12:00:00+00:00,2026-Q2,"POLYGON ((-73.9849 40.7478, -73.9849 40.7480, -73.9846 40.7480, -73.9846 40.7478, -73.9849 40.7478))"
