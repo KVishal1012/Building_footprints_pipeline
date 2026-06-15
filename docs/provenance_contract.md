@@ -10,9 +10,10 @@ Structure Intelligence Database is audit-ready by design. Every important value 
 ## Hard Rules
 
 - AI predictions never overwrite non-null authoritative or raw-source fields.
-- AI cannot be written into `LoadSource` or `RawDataSource`.
-- Each model suggestion must carry `PredictionKind`, model name/version, confidence, and features used.
-- Every output row must have audit fields and a non-empty `CoverageTier`.
+- AI cannot be written into `LoadSource`, `RawDataSource`, or core attribute source fields.
+- Each model suggestion must carry `PredictionKind`, model name/version, confidence, features used, and disclosure level.
+- Every output row must have audit fields, `data_refresh_timestamp`, and a non-empty `CoverageTier`.
+- A production release must include a `release_gates` report with no blockers.
 - Domain extensions are additive tables keyed by `StructureID`; they do not mutate the core table.
 
 ## Source Of Truth

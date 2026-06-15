@@ -5,7 +5,7 @@ from pathlib import Path
 import geopandas as gpd
 
 from structures_pipeline.config import PipelineConfig
-from structures_pipeline.sources import dataframe_for_sql_export
+from structures_pipeline.sources import dataframe_for_sql_export, sql_export_quality_report
 
 SUPPORTED_DELIVERY_FORMATS = {"csv", "parquet", "geojson", "postgis"}
 
@@ -47,6 +47,8 @@ def export_postgis_compatible(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> 
     table = export_config.get("table", "structures")
     geometry_column = export_config.get("geometry_column", "geometry_wkt")
     frame = dataframe_for_sql_export(gdf, geometry_column=geometry_column)
+    source_columns = [column for column in gdf.columns if column != gdf.geometry.name] + [geometry_column]
+    quality_report = sql_export_quality_report(frame, source_columns=source_columns)
     connection = export_config.get("connection")
     if not connection:
         return {
@@ -54,6 +56,7 @@ def export_postgis_compatible(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> 
             "rows_prepared": int(len(frame)),
             "geometry_column": geometry_column,
             "mode": "prepared_only",
+            "quality_report": quality_report,
         }
     try:
         from sqlalchemy import create_engine
@@ -74,4 +77,5 @@ def export_postgis_compatible(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> 
         "rows_exported": int(len(frame)),
         "geometry_column": geometry_column,
         "mode": "exported",
+        "quality_report": quality_report,
     }

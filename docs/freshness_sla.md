@@ -29,7 +29,7 @@ Dry-run a prepared Manhattan source file without promoting rows:
 ```bash
 python scripts/run_refresh_pipeline.py \
   --store in_memory \
-  --source-file data/prepared/manhattan_structures.parquet \
+  --source-file examples/manhattan_refresh_source.csv \
   --source-name nyc_pluto \
   --source-family assessor \
   --source-as-of 2026-Q2 \
@@ -47,7 +47,7 @@ python scripts/run_refresh_pipeline.py \
   --store supabase \
   --supabase-url https://YOUR_PROJECT.supabase.co \
   --supabase-service-role-env SUPABASE_SERVICE_ROLE_KEY \
-  --source-file data/prepared/manhattan_structures.parquet \
+  --source-file examples/manhattan_refresh_source.csv \
   --source-name nyc_pluto \
   --source-family assessor \
   --source-as-of 2026-Q2 \
@@ -56,6 +56,8 @@ python scripts/run_refresh_pipeline.py \
   --city Manhattan \
   --state "New York"
 ```
+
+The command prints `release_gate_status` and `release_gate_blockers`. A production release is shippable only when `release_gate_status` is `passed` and `failed_count` is `0`.
 
 Coverage registry and release manifest rows are updated by the refresh cycle after promotion succeeds. To sync the canonical output to SQL Server for an enterprise buyer, use the existing SQL Server runner:
 

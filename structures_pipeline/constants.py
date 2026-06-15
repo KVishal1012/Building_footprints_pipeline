@@ -144,6 +144,7 @@ REQUIRED_OUTPUT_COLUMNS = [
     "updated_at",
     "updated_by",
     "change_log",
+    "data_refresh_timestamp",
     "last_refreshed",
     "source_as_of",
     "CoverageTier",

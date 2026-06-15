@@ -27,6 +27,7 @@ def _frame():
             "OccupantCountSource": ["nsi", pd.NA],
             "last_refreshed": ["2026-06-04", "2026-06-04"],
             "source_as_of": ["2026-Q2", "2026-06"],
+            "RawHelperColumn": ["drop-me", "drop-me-too"],
         },
         geometry=[box(0, 0, 1, 1), box(2, 2, 3, 3)],
         crs="EPSG:4326",
@@ -81,3 +82,5 @@ def test_export_delivery_formats_writes_csv_parquet_geojson_and_postgis_shape(tm
     assert paths["geojson"].exists()
     assert paths["postgis"]["table"] == "public.structures"
     assert paths["postgis"]["rows_prepared"] == 2
+    assert paths["postgis"]["quality_report"]["approved_output_contract"] is True
+    assert paths["postgis"]["quality_report"]["unexpected_columns_dropped"] == ["RawHelperColumn"]

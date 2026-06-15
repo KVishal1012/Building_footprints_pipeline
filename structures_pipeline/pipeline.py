@@ -54,6 +54,7 @@ def apply_audit_fields(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> gpd.Geo
         "updated_at": now,
         "updated_by": config.updated_by,
         "change_log": change_log,
+        "data_refresh_timestamp": config.data_refresh_timestamp or config.refresh_metadata.get("data_refresh_timestamp") or now,
         "last_refreshed": config.refresh_metadata.get("last_refreshed") or now,
         "source_as_of": source_as_of,
     }

@@ -72,6 +72,26 @@ def build_gap_registry(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> pd.Data
     return pd.DataFrame(rows)
 
 
+# Build completeness metrics by raw source for release and operator reporting.
+def build_source_completeness(gdf: gpd.GeoDataFrame) -> list[dict]:
+    """Build completeness metrics by raw source for release and operator reporting."""
+    if gdf.empty or "RawDataSource" not in gdf.columns:
+        return []
+    rows: list[dict] = []
+    for source, group in gdf.groupby("RawDataSource", dropna=False):
+        rows.append(
+            {
+                "RawDataSource": str(source),
+                "row_count": int(len(group)),
+                "structure_type_completeness": float(group["StructureType"].notna().mean()),
+                "num_units_completeness": float(group["NumUnits"].notna().mean()),
+                "num_stories_completeness": float(group["NumStories"].notna().mean()),
+                "occupant_count_completeness": float(group["OccupantCount"].notna().mean()),
+            }
+        )
+    return rows
+
+
 # Add city coverage tiers to each structure so downstream AI policy can be deterministic.
 def apply_coverage_tiers(gdf: gpd.GeoDataFrame, config: PipelineConfig) -> gpd.GeoDataFrame:
     """Add city coverage tiers to each structure so downstream AI policy can be deterministic."""

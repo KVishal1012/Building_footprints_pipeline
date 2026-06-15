@@ -7,7 +7,9 @@ import geopandas as gpd
 import pandas as pd
 
 from structures_pipeline.config import PipelineConfig
+from structures_pipeline.coverage import build_gap_registry, build_source_completeness
 from structures_pipeline.utils import json_safe, utc_now_iso
+from structures_pipeline.validation import validate_release_gates
 
 
 # Convert path dictionaries into JSON-safe strings while preserving nested metadata.
@@ -46,8 +48,17 @@ def build_release_manifest(
     coverage_tier_counts = {}
     if "CoverageTier" in frame.columns:
         coverage_tier_counts = frame["CoverageTier"].fillna("unknown").astype(str).value_counts().to_dict()
+    release_gates = validate_release_gates(frame) if row_count else {"status": "passed", "checks": {}, "blockers": []}
+    source_completeness = build_source_completeness(frame) if row_count else []
+    gap_registry = []
+    if row_count and {"City", "State"}.issubset(frame.columns):
+        gap_registry = build_gap_registry(frame, config).to_dict("records")
+    frame_refresh_timestamp = None
+    if row_count and "data_refresh_timestamp" in frame.columns:
+        values = frame["data_refresh_timestamp"].dropna().astype(str)
+        frame_refresh_timestamp = values.max() if not values.empty else None
 
-    return {
+    manifest = {
         "release_id": release_id,
         "generated_at": utc_now_iso(),
         "product": "Structure Intelligence Database",
@@ -60,15 +71,26 @@ def build_release_manifest(
             "ai_policy": "suggest_only_never_overwrite",
             "provenance_required": True,
             "audit_trail_required": True,
+            "release_gates": release_gates,
         },
         "freshness": {
-            "data_refresh_timestamp": config.data_refresh_timestamp,
-            "last_refreshed": config.refresh_metadata.get("last_refreshed"),
-            "source_as_of": config.refresh_metadata.get("source_as_of") or config.source_version,
+            "data_refresh_timestamp": config.data_refresh_timestamp or frame_refresh_timestamp,
+            "last_refreshed": config.refresh_metadata.get("last_refreshed") or (
+                frame["last_refreshed"].dropna().astype(str).max()
+                if row_count and "last_refreshed" in frame.columns and not frame["last_refreshed"].dropna().empty
+                else None
+            ),
+            "source_as_of": config.refresh_metadata.get("source_as_of") or (
+                frame["source_as_of"].dropna().astype(str).max()
+                if row_count and "source_as_of" in frame.columns and not frame["source_as_of"].dropna().empty
+                else config.source_version
+            ),
             "refresh_cadence": config.refresh_metadata.get("refresh_cadence"),
         },
         "coverage": {
             "tier_counts": coverage_tier_counts,
+            "gap_registry": json_safe(gap_registry),
+            "source_completeness": json_safe(source_completeness),
             "coverage_outputs": _json_paths(coverage_paths or {}),
         },
         "ai": {
@@ -92,6 +114,8 @@ def build_release_manifest(
         "city_metrics": json_safe(metrics or []),
         "config": json_safe(config.__dict__),
     }
+    manifest["quality_contract"]["release_gates"] = validate_release_gates(frame, manifest=manifest) if row_count else release_gates
+    return manifest
 
 
 # Write the release package manifest used by versioned distribution workflows.

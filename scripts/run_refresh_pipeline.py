@@ -90,6 +90,8 @@ def main() -> None:
         "change_counts": result["source_run"]["metadata"].get("change_counts", {}),
         "promoted_count": result["promotion"]["promoted_count"],
         "failed_count": result["promotion"]["failed_count"],
+        "release_gate_status": result["release_manifest"]["quality_contract"]["release_gates"]["status"],
+        "release_gate_blockers": result["release_manifest"]["quality_contract"]["release_gates"]["blockers"],
         "dry_run": args.dry_run,
         "store": args.store,
     }

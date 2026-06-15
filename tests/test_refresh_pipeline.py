@@ -167,6 +167,7 @@ def test_full_refresh_cycle_dry_run_computes_changes_without_mutating_store():
     assert len(result["raw_rows"]) == 1
     assert [row["change_type"] for row in result["changes"]] == ["insert"]
     assert result["promotion"]["promoted_count"] == 1
+    assert result["release_manifest"]["quality_contract"]["release_gates"]["status"] == "passed"
     assert store.raw_structures == []
     assert store.canonical_rows() == []
     assert store.release_manifests == {}
@@ -191,3 +192,4 @@ def test_full_refresh_cycle_promotes_valid_rows_and_writes_metadata():
     assert result["release_manifest"]["source_run"]["source_run_id"] == result["source_run"]["source_run_id"]
     assert result["release_manifest"]["refresh_status"] == "completed"
     assert result["release_manifest"]["data_refresh_timestamp"] == "2026-06-06T12:00:00+00:00"
+    assert result["release_manifest"]["quality_contract"]["release_gates"]["status"] == "passed"

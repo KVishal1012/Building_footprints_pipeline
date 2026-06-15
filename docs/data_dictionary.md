@@ -16,6 +16,7 @@ This dictionary documents the core structure table. Domain-specific fields live 
 | --- | --- |
 | `created_at`, `updated_at`, `updated_by` | Record audit metadata. |
 | `change_log` | JSON-compatible change trail for release and refresh workflows. |
+| `data_refresh_timestamp` | Single timestamp shared across source run, raw staging, change log, canonical promotion, coverage registry, and release manifest. |
 | `last_refreshed` | Date/time the record was refreshed in this pipeline. |
 | `source_as_of` | Upstream source vintage represented by the record. |
 

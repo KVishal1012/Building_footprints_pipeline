@@ -28,6 +28,7 @@ from structures_pipeline.constants import (
     OVERTURE_STAC_URL,
     PARCEL_FIELD_ALIASES,
     PARCEL_TEXT_COLUMNS,
+    REQUIRED_OUTPUT_COLUMNS,
 )
 from structures_pipeline.geometry import (
     assign_footprints_to_place,
@@ -233,18 +234,71 @@ def _sql_table_parts(table: str) -> tuple[str | None, str]:
     return (parts[0], parts[1]) if len(parts) == 2 else (None, parts[0])
 
 
-# Convert a GeoDataFrame into rows that can be inserted by pandas/SQLAlchemy.
+# Return approved output columns plus the configured WKT geometry column for delivery/export.
+def approved_sql_export_columns(gdf: gpd.GeoDataFrame, geometry_column: str) -> list[str]:
+    """Return approved output columns plus the configured WKT geometry column for delivery/export."""
+    approved_without_geometry = [column for column in REQUIRED_OUTPUT_COLUMNS if column != "geometry"]
+    columns = [column for column in approved_without_geometry if column in gdf.columns]
+    columns.append(geometry_column)
+    return columns
+
+
+# Convert a GeoDataFrame into approved rows that can be inserted by pandas/SQLAlchemy.
 def dataframe_for_sql_export(
     gdf: gpd.GeoDataFrame,
     geometry_column: str = "geometry_wkt",
 ) -> pd.DataFrame:
-    """Convert a GeoDataFrame into rows that can be inserted by pandas/SQLAlchemy."""
-    frame = pd.DataFrame(gdf.drop(columns=[gdf.geometry.name], errors="ignore")).copy()
+    """Convert a GeoDataFrame into approved rows that can be inserted by pandas/SQLAlchemy."""
+    approved_without_geometry = [column for column in REQUIRED_OUTPUT_COLUMNS if column != "geometry"]
+    available_columns = [column for column in approved_without_geometry if column in gdf.columns]
+    frame = pd.DataFrame(gdf[available_columns]).copy()
     geometry = gdf.geometry
     if gdf.crs and gdf.crs.to_epsg() != 4326:
         geometry = gdf.to_crs(epsg=4326).geometry
     frame[geometry_column] = geometry.to_wkt()
     return frame
+
+
+# Build a compact export QA report for downstream delivery targets.
+def sql_export_quality_report(frame: pd.DataFrame, *, source_columns: list[str] | None = None) -> dict:
+    """Build a compact export QA report for downstream delivery targets."""
+    critical_columns = [
+        "StructureID",
+        "StructureType",
+        "NumStories",
+        "NumUnits",
+        "OccupantCount",
+        "StructureTypeSource",
+        "NumStoriesSource",
+        "NumUnitsSource",
+        "OccupantCountSource",
+    ]
+    null_counts = {
+        column: int(frame[column].isna().sum())
+        for column in critical_columns
+        if column in frame.columns
+    }
+    datasource_columns = [
+        "StructureTypeSource",
+        "NumStoriesSource",
+        "NumUnitsSource",
+        "OccupantCountSource",
+    ]
+    datasource_completeness = {
+        column: float(frame[column].notna().mean()) if len(frame) else 0.0
+        for column in datasource_columns
+        if column in frame.columns
+    }
+    allowed_columns = set(REQUIRED_OUTPUT_COLUMNS) - {"geometry"}
+    allowed_columns.add("geometry_wkt")
+    return {
+        "row_count": int(len(frame)),
+        "exported_columns": list(frame.columns),
+        "unexpected_columns_dropped": sorted(set(source_columns or []) - set(frame.columns)),
+        "approved_output_contract": set(frame.columns).issubset(allowed_columns),
+        "null_counts": null_counts,
+        "datasource_completeness": datasource_completeness,
+    }
 
 
 # Export the final structure dataframe to a SQL Server-compatible table.
@@ -273,6 +327,8 @@ def export_dataframe_to_sql_server(
     schema, table_name = _sql_table_parts(table)
     geometry_column = export_config.get("geometry_column") or "geometry_wkt"
     frame = dataframe_for_sql_export(gdf, geometry_column=geometry_column)
+    source_columns = [column for column in gdf.columns if column != gdf.geometry.name] + [geometry_column]
+    quality_report = sql_export_quality_report(frame, source_columns=source_columns)
     engine_kwargs = {}
     if str(connection).lower().startswith("mssql") and export_config.get("fast_executemany", True):
         engine_kwargs["fast_executemany"] = True
@@ -290,6 +346,7 @@ def export_dataframe_to_sql_server(
         "rows_exported": int(len(frame)),
         "geometry_column": geometry_column,
         "if_exists": export_config.get("if_exists", "fail"),
+        "quality_report": quality_report,
     }
 
 
