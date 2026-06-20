@@ -1,0 +1,4 @@
+StructureID,City,State,Country,StructureType,NumStories,NumUnits,OccupantCount,FootprintArea_sqft,CoverageTier,data_refresh_timestamp,last_refreshed,source_as_of,geometry_wkt
+india_chennai_000001,Chennai,Tamil Nadu,India,residential,4,8,32,4520.84,Tier 4,2026-06-20T12:00:00+00:00,2026-06-20T12:00:00+00:00,2026-Q2,"POLYGON ((80.2707 13.0825, 80.2707 13.0828, 80.2710 13.0828, 80.2710 13.0825, 80.2707 13.0825))"
+india_chennai_000002,Chennai,Tamil Nadu,India,commercial,6,1,75,10548.63,Tier 4,2026-06-20T12:00:00+00:00,2026-06-20T12:00:00+00:00,2026-Q2,"POLYGON ((80.2782 13.0477, 80.2782 13.0480, 80.2786 13.0480, 80.2786 13.0477, 80.2782 13.0477))"
+india_chennai_000003,Chennai,Tamil Nadu,India,public,3,1,220,16145.87,Tier 4,2026-06-20T12:00:00+00:00,2026-06-20T12:00:00+00:00,2026-Q2,"POLYGON ((80.2201 13.0066, 80.2201 13.0069, 80.2205 13.0069, 80.2205 13.0066, 80.2201 13.0066))"

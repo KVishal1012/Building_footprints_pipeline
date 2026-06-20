@@ -23,6 +23,16 @@ Regenerate it from the committed Manhattan fixture:
 python scripts/build_manhattan_money_path_package.py
 ```
 
+## Chennai / Tamil Nadu Money Path Demo
+
+The India branch starts with Chennai as the proof market and Tamil Nadu as the expansion path. The Chennai demo package is generated into [sales/chennai_demo](sales/chennai_demo) and includes canonical sample rows, provenance, coverage/completeness metrics, a release manifest with passing QA gates, and a one-page Tamil Nadu sales pitch.
+
+Regenerate it from the committed Chennai fixture:
+
+```bash
+python scripts/build_chennai_money_path_package.py
+```
+
 The pipeline uses Census TIGER/Line place boundaries for reproducible city coverage, Overture Maps, Microsoft Global ML Building Footprints, SQL Server authoritative sources, USACE NSI and ACS, optional parcel layers, and optional OSM enrichment.
 
 ## Setup

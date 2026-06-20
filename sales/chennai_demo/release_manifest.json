@@ -1,0 +1,82 @@
+{
+  "coverage": {
+    "coverage_rows": [
+      {
+        "City": "Chennai",
+        "Country": "India",
+        "CoverageTier": "Tier 4",
+        "State": "Tamil Nadu",
+        "known_gap": "Authoritative municipal building attributes not yet onboarded; proxy fields are explicitly labeled.",
+        "last_refreshed": "2026-06-20T12:00:00+00:00",
+        "num_stories_completeness": 1.0,
+        "num_units_completeness": 1.0,
+        "occupant_count_completeness": 1.0,
+        "raw_sources": "overture_maps",
+        "row_count": 3,
+        "source_as_of": "2026-Q2",
+        "structure_type_completeness": 1.0
+      }
+    ],
+    "source_counts": {
+      "overture_maps": 3
+    },
+    "tamil_nadu_expansion_targets": [
+      "Coimbatore",
+      "Madurai",
+      "Tiruchirappalli",
+      "Salem",
+      "Tiruppur"
+    ]
+  },
+  "delivery": {
+    "included_files": [
+      "sample_structures.csv",
+      "provenance_snapshot.csv",
+      "coverage_gap_registry.csv",
+      "release_manifest.json",
+      "one_page_pitch.md"
+    ],
+    "production_options": [
+      "Supabase REST/PostgREST",
+      "SQL Server sync",
+      "PostGIS/WKT",
+      "CSV",
+      "Parquet",
+      "GeoJSON"
+    ]
+  },
+  "freshness": {
+    "data_refresh_timestamp": "2026-06-20T12:00:00+00:00",
+    "last_refreshed": "2026-06-20T12:00:00+00:00",
+    "refresh_cadence": "quarterly when authoritative municipal or state sources are onboarded",
+    "source_as_of": "2026-Q2"
+  },
+  "generated_at": "2026-06-20T12:00:00+00:00",
+  "known_gaps": [
+    "Demo package contains a small Chennai sample, not full Greater Chennai coverage.",
+    "Authoritative municipal building, tax, planning, parcel, or ward datasets are not yet onboarded.",
+    "Overture and OSM are used as footprint/fallback sources; proxy attributes are explicitly labeled.",
+    "AI predictions are not used as authoritative values in this demo package."
+  ],
+  "market": "Chennai, Tamil Nadu, India",
+  "offer": "Audit-ready Chennai structure database with Tamil Nadu expansion path",
+  "pricing_targets": {
+    "api_or_database_access": "$500-$2k/month",
+    "custom_city_build": "$5k-$25k",
+    "pilot_dataset": "$2k-$10k",
+    "statewide_enterprise_license": "$25k-$100k+",
+    "tamil_nadu_city_expansion": "$5k-$25k per city depending on source availability"
+  },
+  "product": "Structure Intelligence Database",
+  "quality_contract": {
+    "ai_policy": "suggest_only_never_overwrite",
+    "audit_trail_required": true,
+    "provenance_required": true,
+    "proxy_data_allowed_when_labeled": true,
+    "release_gate_blockers": [],
+    "release_gate_status": "passed",
+    "source_of_truth": "public.structures"
+  },
+  "release_id": "chennai-demo-2026-q2",
+  "row_count": 3
+}

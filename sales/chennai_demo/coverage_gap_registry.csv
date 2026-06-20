@@ -1,0 +1,2 @@
+City,State,Country,CoverageTier,row_count,structure_type_completeness,num_stories_completeness,num_units_completeness,occupant_count_completeness,raw_sources,last_refreshed,source_as_of,known_gap
+Chennai,Tamil Nadu,India,Tier 4,3,1.0,1.0,1.0,1.0,overture_maps,2026-06-20T12:00:00+00:00,2026-Q2,Authoritative municipal building attributes not yet onboarded; proxy fields are explicitly labeled.
