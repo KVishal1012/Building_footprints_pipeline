@@ -5,14 +5,14 @@ Version 2.0 | June 2026
 
 ## Why This Revision
 
-The original product map was architecturally sound. This revision addresses four gaps that would have created friction at the point of sale and at the point of production deployment:
+The original product map was architecturally sound. This revision addresses four gaps that would have created friction during evaluation and production deployment:
 
 | Original Gap | Addressed By |
 | --- | --- |
 | No data freshness or refresh cadence defined | Automated refresh pipeline added to Phase 2 |
-| SQL Server-only delivery limits buyer base | Supabase/Postgres canonical database plus multi-format delivery promoted to Phase 2 |
+| SQL Server-only delivery limits consumer adoption | Supabase/Postgres canonical database plus multi-format delivery promoted to Phase 2 |
 | Coverage gaps in mid-tier cities unaddressed | Coverage tier model and gap registry added to Phase 2 |
-| Competitive moat understated | Compliance and provenance GTM story formalized as core positioning |
+| Competitive moat understated | Compliance and provenance positioning formalized as core product strategy |
 
 ## Product Direction
 
@@ -29,25 +29,25 @@ The core differentiation:
 
 Every competitor gives you a number. This database tells you how much to trust it, who said it, and when it was last verified. That provenance contract is the product.
 
-## GTM Positioning
+## Product Positioning
 
 ### The Problem We Solve
 
-Insurers misprice risk because building attributes are wrong or unverifiable. Emergency managers deploy resources based on occupancy counts that are years out of date. Climate risk analysts overlay flood models on structure data they cannot audit. In all three cases, the root cause is not bad models. It is untrustworthy input data.
+Insurers misclassify risk because building attributes are wrong or unverifiable. Emergency managers deploy resources based on occupancy counts that are years out of date. Climate risk analysts overlay flood models on structure data they cannot audit. In all three cases, the root cause is not bad models. It is untrustworthy input data.
 
 ### Positioning Statement
 
 For risk and intelligence teams who cannot trust their building data, Structure Intelligence Database is the only structure data layer that ships every attribute with its source, confidence score, and provenance classification, making it the first building dataset that is audit-ready by design. Unlike Regrid, Overture, or NSI, we do not just give you a number. We give you a traceable chain of custody for every field.
 
-### Primary Buyer Personas
+### Primary User Personas
 
-| Persona | Pain Point | Why They Pay |
+| Persona | Pain Point | Adoption Driver |
 | --- | --- | --- |
-| Insurance Underwriter | Mispriced risk due to bad structure attributes | One avoided loss event can exceed the contract value |
-| Climate Risk Analyst | Cannot document data lineage for ESG/regulatory reporting | Compliance mandate drives procurement |
-| Emergency Manager | Occupancy counts are stale; critical facility flags missing | Life safety justifies budget |
-| Proptech / RE Analytics | Rebuilding building data from raw sources is expensive | Developer time saved exceeds subscription cost |
-| Municipal Planning Dept | No single source covering zoning, structure, and risk | Grant-funded or capital budget procurement |
+| Insurance Underwriter | Risk classification errors due to bad structure attributes | Avoidable exposure errors |
+| Climate Risk Analyst | Cannot document data lineage for ESG/regulatory reporting | Compliance-ready lineage |
+| Emergency Manager | Occupancy counts are stale; critical facility flags missing | Life-safety planning |
+| Proptech / RE Analytics | Rebuilding building data from raw sources is expensive | Reduced data engineering effort |
+| Municipal Planning Dept | No single source covering zoning, structure, and risk | Planning and capital-program support |
 
 ### Competitive Landscape
 
@@ -61,14 +61,14 @@ For risk and intelligence teams who cannot trust their building data, Structure 
 
 ### Compliance Angle
 
-Insurers and reinsurers are under growing regulatory pressure to document why underwriting decisions were made. Climate risk disclosures such as TCFD, SEC climate rules, and OSFI B-15 in Canada require firms to trace risk exposure to its data sources. A database that ships `PredictionConfidence`, `PredictionModelVersion`, and `PredictionFeaturesUsed` per attribute is compliance infrastructure, not just a data product. This is a faster procurement path than competing on coverage alone.
+Insurers and reinsurers are under growing regulatory pressure to document why underwriting decisions were made. Climate risk disclosures such as TCFD, SEC climate rules, and OSFI B-15 in Canada require firms to trace risk exposure to its data sources. A database that ships `PredictionConfidence`, `PredictionModelVersion`, and `PredictionFeaturesUsed` per attribute is compliance infrastructure, not just a data product. This makes auditability a core requirement rather than an afterthought.
 
 ## Revised Product Roadmap
 
 What changed from v1:
 
-- Data freshness and multi-format delivery moved from Phase 5 to Phase 2 because buyers will ask about them before signing.
-- Coverage tier model added to Phase 2 because coverage gaps discovered post-sale destroy trust.
+- Data freshness and multi-format delivery moved from Phase 5 to Phase 2 because consumers need them during evaluation.
+- Coverage tier model added to Phase 2 because undisclosed coverage gaps destroy trust.
 - Compliance and audit positioning are now part of Phase 1 schema design rather than a late productization feature.
 
 | Phase | Name | Timeline | Key Deliverables |
@@ -77,7 +77,7 @@ What changed from v1:
 | 2 | Coverage + Delivery | Months 2-4 | Refresh pipeline, multi-format API, coverage tier model, gap registry, attribute completeness dashboard |
 | 3 | AI Assistance | Months 4-6 | Suggest-only gap-filling, model provenance fields, confidence thresholding, no authoritative overwrite |
 | 4 | Domain Extensions | Months 6-9 | Flood, oil and gas, weather, planning extension tables with vertical-specific attribute sets |
-| 5 | Platform + Distribution | Months 9-12 | Versioned release workflow, consumer docs, data quality SLA dashboard, marketplace listing |
+| 5 | Platform + Distribution | Months 9-12 | Versioned release workflow, consumer docs, data quality SLA dashboard, distribution catalog |
 
 ## Phase 1 - Trusted Core Database
 
@@ -98,7 +98,7 @@ Core schema fields:
 
 ## Phase 2 - Coverage + Delivery
 
-This phase is restructured because delivery format and data freshness are sales blockers. Buyers in insurance and climate risk will ask how they get the data and how stale it is before signing.
+This phase is restructured because delivery format and data freshness are deployment blockers. Insurance and climate risk teams need to know how they get the data and how stale it is before operational use.
 
 ### Refresh Pipeline
 
@@ -153,15 +153,15 @@ Confidence suppression by tier:
 
 Extension tables are additive and do not change the core schema.
 
-Priority order is based on buyer readiness and deal speed:
+Priority order is based on operational readiness and implementation urgency:
 
 | Priority | Vertical | Phase | Why This Order |
 | --- | --- | --- | --- |
 | 1 | Flood Monitoring | Phase 4 | Regulatory tailwind; FEMA, OSFI, and insurance mandates |
-| 2 | Weather Risk | Phase 4 | Reinsurance and insurance buyers already have budget and procurement process |
-| 3 | Emergency Response | Phase 4 | Municipal procurement is slower but large; start conversations in Phase 2 |
+| 2 | Weather Risk | Phase 4 | Reinsurance and insurance teams already have mature risk-data workflows |
+| 3 | Emergency Response | Phase 4 | Municipal implementation cycles are slower but important; start planning conversations in Phase 2 |
 | 4 | Urban Planning | Phase 4 | Zoning and assessor data are already in Phase 2; extension is incremental |
-| 5 | Oil and Gas | Phase 4 | High-value vertical but longer sales cycle; build relationships in Phase 3 |
+| 5 | Oil and Gas | Phase 4 | Specialized vertical with longer implementation cycles; build relationships in Phase 3 |
 
 Extension fields:
 
@@ -173,7 +173,7 @@ Extension fields:
 
 ## Phase 5 - Platform + Distribution
 
-Delivery and documentation move earlier, so this phase focuses on commercialization and ecosystem positioning.
+Delivery and documentation move earlier, so this phase focuses on platform reliability and ecosystem positioning.
 
 - Versioned release metadata and repeatable refresh workflow.
 - Data quality SLA dashboard with per-source freshness and completeness tracking.
@@ -231,7 +231,7 @@ These are three distinct products with compounding value.
 | Data freshness | Not addressed | Refresh pipeline + cadence model in Phase 2 |
 | Delivery formats | SQL Server only until Phase 5 | Supabase API + PostGIS + Parquet promoted to Phase 2 |
 | Coverage gaps | Not addressed | Tier model + gap registry + coverage API in Phase 2 |
-| GTM positioning | Data vendor story | Compliance infrastructure + audit-ready provenance story |
+| Product positioning | Data vendor story | Compliance infrastructure + audit-ready provenance story |
 | Competitive moat | Unstated | Provenance contract + compliance angle + audit trail |
 | AI constraints | Suggest-only | Suggest-only + tier-aware confidence suppression |
 | Audit trail | Implied | Explicit schema fields from Phase 1 |

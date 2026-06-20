@@ -34,7 +34,7 @@
       "provenance_snapshot.csv",
       "coverage_gap_registry.csv",
       "release_manifest.json",
-      "one_page_pitch.md"
+      "one_page_brief.md"
     ],
     "production_options": [
       "Supabase REST/PostgREST",
@@ -60,13 +60,6 @@
   ],
   "market": "Chennai, Tamil Nadu, India",
   "offer": "Audit-ready Chennai structure database with Tamil Nadu expansion path",
-  "pricing_targets": {
-    "api_or_database_access": "$500-$2k/month",
-    "custom_city_build": "$5k-$25k",
-    "pilot_dataset": "$2k-$10k",
-    "statewide_enterprise_license": "$25k-$100k+",
-    "tamil_nadu_city_expansion": "$5k-$25k per city depending on source availability"
-  },
   "product": "Structure Intelligence Database",
   "quality_contract": {
     "ai_policy": "suggest_only_never_overwrite",

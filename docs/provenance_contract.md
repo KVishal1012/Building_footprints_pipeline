@@ -25,7 +25,7 @@ The core source-of-truth fields are the canonical attributes and their source/me
 A production release should include:
 
 - Core structure table.
-- Optional delivery formats configured for the buyer.
+- Optional delivery formats configured for the consuming team.
 - Coverage gap registry.
 - Domain extension tables when enabled.
 - `release_manifest.json`.

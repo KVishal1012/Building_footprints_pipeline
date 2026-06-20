@@ -2,7 +2,7 @@
 
 This package demonstrates the Chennai-first India version of **Structure Intelligence Database**: an audit-ready structure dataset where every core attribute includes source, confidence, freshness, and QA status.
 
-## Buyer Promise
+## Data Promise
 
 Audit-ready structure data for Chennai, with source, confidence, freshness, and QA status for every field.
 
@@ -11,8 +11,8 @@ Audit-ready structure data for Chennai, with source, confidence, freshness, and 
 - `sample_structures.csv`: canonical `public.structures`-ready Chennai sample rows.
 - `provenance_snapshot.csv`: source and confidence fields for core attributes.
 - `coverage_gap_registry.csv`: Chennai completeness, freshness, and known-gap metrics.
-- `release_manifest.json`: buyer-facing release, pricing, QA, delivery, and Tamil Nadu expansion metadata.
-- `one_page_pitch.md`: concise sales/outreach asset.
+- `release_manifest.json`: release, QA, delivery, and Tamil Nadu expansion metadata.
+- `one_page_brief.md`: concise implementation brief.
 
 ## Release Status
 
@@ -46,7 +46,7 @@ Audit-ready structure data for Chennai, with source, confidence, freshness, and 
 
 ## Tamil Nadu Expansion Path
 
-Chennai is the template package. The next paid city builds are: Coimbatore, Madurai, Tiruchirappalli, Salem, Tiruppur.
+Chennai is the template package. The next city expansion targets are: Coimbatore, Madurai, Tiruchirappalli, Salem, Tiruppur.
 
 ## India Source Strategy
 
@@ -60,12 +60,12 @@ Chennai is the template package. The next paid city builds are: Coimbatore, Madu
 ## Delivery Options
 
 - Supabase REST/PostgREST API
-- SQL Server sync for enterprise buyers
+- SQL Server sync for enterprise deployments
 - PostGIS/WKT table
 - CSV, Parquet, and GeoJSON exports
 
 ## Known Gaps
 
 - This is a small Chennai proof package, not full Tamil Nadu coverage.
-- A paid buyer build should acquire current authoritative source rows for the requested city or area of interest.
+- A production deployment should acquire current authoritative source rows for the requested city or area of interest.
 - Proxy fields are intentionally labeled and should not be presented as authoritative.

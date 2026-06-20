@@ -1,8 +1,8 @@
 # Manhattan Structure Intelligence Demo Package
 
-This package demonstrates the first sellable version of **Structure Intelligence Database**: an audit-ready structure dataset where every core attribute includes source, confidence, freshness, and QA status.
+This package demonstrates **Structure Intelligence Database**: an audit-ready structure dataset where every core attribute includes source, confidence, freshness, and QA status.
 
-## Buyer Promise
+## Data Promise
 
 Audit-ready building attributes for risk models, planning workflows, and emergency intelligence, with source, confidence, and refresh trail for every field.
 
@@ -11,8 +11,8 @@ Audit-ready building attributes for risk models, planning workflows, and emergen
 - `sample_structures.csv`: canonical `public.structures`-ready sample rows.
 - `provenance_snapshot.csv`: source and confidence fields for core attributes.
 - `coverage_gap_registry.csv`: city-level completeness and freshness metrics.
-- `release_manifest.json`: buyer-facing release, pricing, QA, delivery, and known-gap metadata.
-- `one_page_pitch.md`: concise sales/outreach asset.
+- `release_manifest.json`: release, QA, delivery, and known-gap metadata.
+- `one_page_brief.md`: concise implementation brief.
 
 ## Release Status
 
@@ -54,12 +54,12 @@ Audit-ready building attributes for risk models, planning workflows, and emergen
 ## Delivery Options
 
 - Supabase REST/PostgREST API
-- SQL Server sync for enterprise buyers
+- SQL Server sync for enterprise deployments
 - PostGIS/WKT table
 - CSV, Parquet, and GeoJSON exports
 
 ## Known Gaps
 
 - This is a small Manhattan proof package, not full production borough coverage.
-- A paid buyer build should acquire current authoritative source rows for the requested city or AOI.
+- A production deployment should acquire current authoritative source rows for the requested city or AOI.
 - AI remains suggest-only and is not used as source of truth.

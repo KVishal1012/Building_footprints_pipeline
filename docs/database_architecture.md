@@ -1,6 +1,6 @@
 # Database Architecture
 
-Structure Intelligence Database is Supabase/Postgres-first. SQL Server remains available as an optional enterprise delivery layer for buyers who require it, but it is not the source of truth.
+Structure Intelligence Database is Supabase/Postgres-first. SQL Server remains available as an optional enterprise delivery layer for deployments that require it, but it is not the source of truth.
 
 ```text
 Upstream Sources
@@ -70,4 +70,4 @@ The local implementation uses an in-memory store for dry-runs and tests. Product
 
 ## Delivery Positioning
 
-Supabase is the canonical product database and primary API surface. SQL Server sync is a downstream delivery option for enterprise buyers. Bulk exports remain useful for analytics teams and marketplace packaging.
+Supabase is the canonical product database and primary API surface. SQL Server sync is a downstream delivery option for enterprise deployments. Bulk exports remain useful for analytics teams and distribution packaging.

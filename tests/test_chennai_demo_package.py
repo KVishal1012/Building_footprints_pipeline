@@ -2,7 +2,7 @@ import csv
 import json
 from pathlib import Path
 
-import scripts.build_chennai_money_path_package as chennai_package
+import scripts.build_chennai_demo_package as chennai_package
 from structures_pipeline.constants import REQUIRED_OUTPUT_COLUMNS
 
 
@@ -41,7 +41,7 @@ def test_chennai_fixture_has_provenance_and_no_ai_authoritative_sources():
         assert row["last_refreshed"].endswith("+00:00")
 
 
-def test_chennai_package_builder_outputs_buyer_package(tmp_path, monkeypatch):
+def test_chennai_package_builder_outputs_demo_package(tmp_path, monkeypatch):
     monkeypatch.setattr(chennai_package, "OUTPUT_DIR", tmp_path / "chennai_demo")
 
     chennai_package.main()
@@ -51,7 +51,7 @@ def test_chennai_package_builder_outputs_buyer_package(tmp_path, monkeypatch):
         "provenance_snapshot.csv",
         "coverage_gap_registry.csv",
         "release_manifest.json",
-        "one_page_pitch.md",
+        "one_page_brief.md",
         "README.md",
     }
     assert expected == {path.name for path in chennai_package.OUTPUT_DIR.iterdir()}

@@ -1,18 +1,18 @@
-# One-Page Pitch: Structure Intelligence Database
+# One-Page Brief: Structure Intelligence Database
 
 ## Offer
 
 Audit-ready structure data for your target city or risk area.
 
-## Why Buyers Care
+## Why Teams Care
 
 Risk and planning teams make expensive decisions using building attributes they often cannot verify. Structure Intelligence Database ships every core attribute with source, confidence, freshness, and QA status.
 
-## First Paid Product
+## First Deployment Pattern
 
-Custom city structure intelligence package delivered in 1-2 weeks.
+Custom city structure intelligence package generated from the canonical refresh workflow.
 
-## Best First Buyers
+## Best First Users
 
 - Climate and flood risk analytics teams
 - Insurance and reinsurance risk teams
@@ -27,13 +27,6 @@ Custom city structure intelligence package delivered in 1-2 weeks.
 - Release manifest with QA status
 - Delivery as CSV/GeoJSON, Supabase API, SQL Server, or PostGIS/WKT
 
-## Price Targets
-
-- Pilot dataset: $2k-$10k
-- Custom city build: $5k-$25k
-- API/database access: $500-$2k/month
-- Regional enterprise license: $25k-$100k+
-
-## Outreach Line
+## Summary Line
 
 We build audit-ready building datasets for risk and planning teams. You get structure attributes with source, confidence, freshness, and QA status for every field, delivered for your target city or portfolio area.

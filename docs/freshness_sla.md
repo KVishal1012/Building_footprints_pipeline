@@ -20,7 +20,7 @@ Release packages should include:
 
 ## First Production Rollout
 
-The first refresh market is Manhattan, New York, using NYC PLUTO/assessor-style authoritative rows, Overture footprints, and NSI enrichment. SQL Server remains a downstream sync target only when an enterprise buyer needs it.
+The first refresh market is Manhattan, New York, using NYC PLUTO/assessor-style authoritative rows, Overture footprints, and NSI enrichment. SQL Server remains a downstream sync target for enterprise deployments that require it.
 
 ## Operator Commands
 
@@ -59,7 +59,7 @@ python scripts/run_refresh_pipeline.py \
 
 The command prints `release_gate_status` and `release_gate_blockers`. A production release is shippable only when `release_gate_status` is `passed` and `failed_count` is `0`.
 
-Coverage registry and release manifest rows are updated by the refresh cycle after promotion succeeds. To sync the canonical output to SQL Server for an enterprise buyer, use the existing SQL Server runner:
+Coverage registry and release manifest rows are updated by the refresh cycle after promotion succeeds. To sync the canonical output to SQL Server for an enterprise deployment, use the existing SQL Server runner:
 
 ```bash
 python scripts/run_sql_server_pipeline.py

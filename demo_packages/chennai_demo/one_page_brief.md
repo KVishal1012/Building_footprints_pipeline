@@ -1,18 +1,18 @@
-# One-Page Pitch: Chennai Structure Intelligence Database
+# One-Page Brief: Chennai Structure Intelligence Database
 
 ## Offer
 
 Audit-ready structure data for Chennai, then repeatable expansion across Tamil Nadu.
 
-## Why Buyers Care
+## Why Teams Care
 
 Flood, climate, planning, and infrastructure teams need building-level exposure data they can defend. Structure Intelligence Database ships each core attribute with source, confidence, freshness, and QA status.
 
-## First Paid Product
+## First Deployment Pattern
 
-Custom Chennai structure intelligence package, then paid Tamil Nadu city expansion.
+Custom Chennai structure intelligence package, then repeatable Tamil Nadu city expansion.
 
-## Best First Buyers
+## Best First Users
 
 - Flood and climate risk analytics teams
 - Urban planning and resilience consultants
@@ -31,13 +31,6 @@ Custom Chennai structure intelligence package, then paid Tamil Nadu city expansi
 
 Coimbatore, Madurai, Tiruchirappalli, Salem, Tiruppur
 
-## Price Targets
-
-- Pilot dataset: $2k-$10k
-- Custom city build: $5k-$25k
-- API/database access: $500-$2k/month
-- Statewide enterprise license: $25k-$100k+
-
-## Outreach Line
+## Summary Line
 
 We build audit-ready structure datasets for Chennai and Tamil Nadu risk teams. You get building attributes with source, confidence, freshness, and QA status for every field, delivered for your target city or flood-risk area.
