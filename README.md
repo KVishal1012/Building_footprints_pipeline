@@ -33,6 +33,26 @@ Regenerate it from the committed Chennai fixture:
 python scripts/build_chennai_demo_package.py
 ```
 
+Run the Chennai refresh workflow against the prepared source rows:
+
+```bash
+python scripts/run_chennai_refresh.py \
+  --source-file examples/india_chennai_refresh_source.csv \
+  --data-refresh-timestamp 2026-06-23T12:00:00+00:00 \
+  --include-registries
+```
+
+The runner stages raw rows, detects changes, runs QA gates, promotes valid rows into the canonical refresh store, and prints a JSON summary with Chennai status plus Tamil Nadu expansion registry entries.
+
+Current Tamil Nadu expansion order:
+
+1. Chennai
+2. Coimbatore
+3. Madurai
+4. Tiruchirappalli
+5. Salem
+6. Tiruppur
+
 The pipeline uses Census TIGER/Line place boundaries for reproducible city coverage, Overture Maps, Microsoft Global ML Building Footprints, SQL Server authoritative sources, USACE NSI and ACS, optional parcel layers, and optional OSM enrichment.
 
 ## Setup

@@ -63,7 +63,7 @@ def build_release_manifest(
         "generated_at": utc_now_iso(),
         "product": "Structure Intelligence Database",
         "schema_version": "2.0",
-        "branch": "US_Structure_AI",
+        "branch": config.refresh_metadata.get("branch", "US_Structure_AI"),
         "row_count": row_count,
         "quality_contract": {
             "canonical_database": config.canonical_database,
