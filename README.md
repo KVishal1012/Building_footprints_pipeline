@@ -44,6 +44,19 @@ python scripts/run_chennai_refresh.py \
 
 The runner stages raw rows, detects changes, runs QA gates, promotes valid rows into the canonical refresh store, and prints a JSON summary with Chennai status plus Tamil Nadu expansion registry entries.
 
+Build a ward-level structure exposure artifact for dashboard integration:
+
+```bash
+python scripts/build_structure_exposure.py \
+  --structures examples/india_chennai_refresh_source.csv \
+  --wards /path/to/gcc_divisions_wards.geojson \
+  --ward-id-column ward_no \
+  --expected-ward-count 200 \
+  --output data/derived/chennai_structure_exposure_features.json
+```
+
+The exposure layer is documented in [docs/structure_exposure_layer.md](docs/structure_exposure_layer.md). It keeps structure facts separate from hazard inference and reports missing attributes as completeness gaps.
+
 Current Tamil Nadu expansion order:
 
 1. Chennai
