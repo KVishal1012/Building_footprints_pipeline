@@ -7,6 +7,7 @@ from shapely.geometry import Point, box
 from structures_pipeline.config import PipelineConfig
 from structures_pipeline.sources import (
     _sqlserver_geometry_select,
+    _sqlserver_geometry_select_with_aoi,
     attach_baseline_proximity,
     approved_sql_export_columns,
     buffered_baseline_boundary,
@@ -163,6 +164,21 @@ def test_sqlserver_geometry_select_uses_spatial_methods():
     assert "WHERE IsActive = 1" in sql
 
 
+def test_sqlserver_geometry_select_with_aoi_adds_parameterized_spatial_filter():
+    sql = _sqlserver_geometry_select_with_aoi(
+        {
+            "table": "dbo.Footprints",
+            "geom_column": "Shape",
+            "id_column": "BuildingID",
+            "where": "IsActive = 1",
+            "srid": 2263,
+        }
+    )
+
+    assert "WHERE IsActive = 1 AND" in sql
+    assert "[Shape].STIntersects(geometry::STGeomFromText(:aoi_wkt, 2263)) = 1" in sql
+
+
 def test_dataframe_for_sql_export_replaces_geometry_with_wkt():
     gdf = gpd.GeoDataFrame(
         {"StructureID": ["s1"], "City": ["Chicago"], "RawHelperColumn": ["drop-me"]},
@@ -258,6 +274,7 @@ def test_export_dataframe_to_sql_server_writes_sql_table(tmp_path):
             "table": "structures_out",
             "if_exists": "replace",
             "geometry_column": "geometry_wkt",
+            "create_native_geometry": True,
         },
     )
 
@@ -269,6 +286,7 @@ def test_export_dataframe_to_sql_server_writes_sql_table(tmp_path):
     assert result["quality_report"]["unexpected_columns_dropped"] == ["RawHelperColumn"]
     assert result["quality_report"]["source_had_unapproved_columns"] is True
     assert result["quality_report"]["approved_output_contract"] is True
+    assert result["native_geometry"]["created_or_verified"] is False
     assert "RawHelperColumn" not in columns
     assert rows[0][0] == "s1"
     assert rows[0][2].startswith("POLYGON")

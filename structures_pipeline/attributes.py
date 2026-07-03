@@ -56,6 +56,7 @@ def finalize_attributes(
     acs_source: str | None,
     overture_release: str | None,
     census_year: int,
+    config=None,
 ) -> gpd.GeoDataFrame:
     """Build the final output schema with derived attributes, methods, and confidence."""
     if base.empty:
@@ -175,15 +176,16 @@ def finalize_attributes(
     sql_units_mask = out["SQLUnits"].notna() & out["SQLUnitsSource"].notna()
     out.loc[sql_units_mask, "NumUnitsSource"] = out.loc[sql_units_mask, "SQLUnitsSource"]
     out["NumUnits"] = to_numeric_safe(out["NumUnits"], index=out.index)
-    infer_single = (
-        out["NumUnits"].isna()
-        & out["StructureType"].isin(["residential", "mobile_home"])
-        & out["StructureTypeRaw"].fillna("").astype(str).str.lower().str.contains(
-            r"house|detached|semidetached|terrace|res1|res2|mobile", regex=True
+    if getattr(config, "derive_num_units", False):
+        infer_single = (
+            out["NumUnits"].isna()
+            & out["StructureType"].isin(["residential", "mobile_home"])
+            & out["StructureTypeRaw"].fillna("").astype(str).str.lower().str.contains(
+                r"house|detached|semidetached|terrace|res1|res2|mobile", regex=True
+            )
         )
-    )
-    out.loc[infer_single, "NumUnits"] = 1
-    out.loc[infer_single, "NumUnitsSource"] = "inferred_single_family"
+        out.loc[infer_single, "NumUnits"] = 1
+        out.loc[infer_single, "NumUnitsSource"] = "inferred_single_family"
     out["NumUnitsConfidence"] = confidence_for_source(
         out["NumUnitsSource"],
         {"sql": 0.95, "osm": 0.90, "nsi": 0.78, "inferred_single_family": 0.58},
@@ -202,36 +204,42 @@ def finalize_attributes(
         ],
         axis=1,
     ).max(axis=1, skipna=True)
-    out["OccupantCount"] = sql_occupants.combine_first(nsi_people)
+    out["OccupantCount"] = sql_occupants
     out["OccupantCountSource"] = pd.Series(pd.NA, index=out.index, dtype="object")
     sql_occupant_source = out["SQLOccupantCountSource"].where(
         out["SQLOccupantCountSource"].notna(),
         "authoritative_raw_occupant_count",
     )
     out.loc[sql_occupants.notna(), "OccupantCountSource"] = sql_occupant_source.loc[sql_occupants.notna()]
-    out.loc[out["OccupantCountSource"].isna() & nsi_people.notna(), "OccupantCountSource"] = "nsi"
     out["OccupantCountMethod"] = np.where(
         sql_occupants.notna(),
         "sql_authoritative_count",
-        np.where(nsi_people.notna(), "nsi_max_2am_2pm_emp_students", pd.NA),
+        pd.NA,
     )
     out["OccupantCountConfidence"] = np.where(
         sql_occupants.notna(),
         0.95,
-        np.where(nsi_people.notna(), 0.76, np.nan),
+        np.nan,
     )
 
-    if census_household_size is not None:
-        census_est = out["NumUnits"] * census_household_size
-        census_mask = (
-            out["OccupantCount"].isna()
-            & out["StructureType"].isin(["residential", "condo", "apartment", "mobile_home"])
-            & census_est.notna()
-        )
-        out.loc[census_mask, "OccupantCount"] = census_est.loc[census_mask]
-        out.loc[census_mask, "OccupantCountSource"] = "acs"
-        out.loc[census_mask, "OccupantCountMethod"] = "num_units_x_acs_household_size"
-        out.loc[census_mask, "OccupantCountConfidence"] = 0.52
+    if getattr(config, "derive_occupant_count", False):
+        nsi_mask = out["OccupantCount"].isna() & nsi_people.notna()
+        out.loc[nsi_mask, "OccupantCount"] = nsi_people.loc[nsi_mask]
+        out.loc[nsi_mask, "OccupantCountSource"] = "nsi"
+        out.loc[nsi_mask, "OccupantCountMethod"] = "nsi_max_2am_2pm_emp_students"
+        out.loc[nsi_mask, "OccupantCountConfidence"] = 0.76
+
+        if census_household_size is not None:
+            census_est = out["NumUnits"] * census_household_size
+            census_mask = (
+                out["OccupantCount"].isna()
+                & out["StructureType"].isin(["residential", "condo", "apartment", "mobile_home"])
+                & census_est.notna()
+            )
+            out.loc[census_mask, "OccupantCount"] = census_est.loc[census_mask]
+            out.loc[census_mask, "OccupantCountSource"] = "acs"
+            out.loc[census_mask, "OccupantCountMethod"] = "num_units_x_acs_household_size"
+            out.loc[census_mask, "OccupantCountConfidence"] = 0.52
 
     out["OvertureRelease"] = overture_release
     out["CensusYear"] = census_year

@@ -34,6 +34,11 @@ BASELINE = {
     "where": "Borough = 'Manhattan'",
     "buffer_value": 250,
     "srid": 4326,
+    # Buffer units:
+    # - EPSG:4326 and EPSG:4269 are treated as meter-based SQL Server geography-style inputs.
+    # - Common US-foot projected SRIDs are converted to meters before GeoPandas buffering.
+    # - For custom projected SRIDs, set buffer_unit_to_meters manually.
+    # - Example: if your baseline SRID is US survey feet, use 1200 / 3937.
     "buffer_unit_to_meters": None,
 }
 
@@ -43,6 +48,8 @@ FOOTPRINTS = {
     "table": "dbo.NYC_PLUTO_Structures",
     "raw_data_source": "nyc_pluto",
     "geometry_column": "Shape",
+    "srid": 4326,
+    "optional": False,
     "id_column": "BBL",
     "structure_type_column": "LandUse",
     "units_column": "UnitsTotal",
@@ -64,6 +71,9 @@ OUTPUT = {
     "geometry_column": "geometry_wkt",
     "chunksize": 1000,
     "preflight": True,
+    "create_native_geometry": True,
+    "native_geometry_column": "Shape",
+    "native_geometry_srid": 4326,
 }
 
 # Keep the SQL Server path table-only by default. Overture/NSI/ACS remain useful
@@ -80,6 +90,8 @@ PIPELINE_OVERRIDES = {
     "use_census": True,
     "use_parcels": False,
     "write_local_outputs": False,
+    "derive_num_units": False,
+    "derive_occupant_count": False,
 }
 
 
@@ -94,6 +106,8 @@ def get_settings() -> SqlServerPipelineSettings:
         footprint_table=FOOTPRINTS["table"],
         footprint_raw_data_source=FOOTPRINTS["raw_data_source"],
         footprint_geom_column=FOOTPRINTS["geometry_column"],
+        footprint_srid=FOOTPRINTS["srid"],
+        footprint_optional=FOOTPRINTS["optional"],
         footprint_id_column=FOOTPRINTS["id_column"],
         footprint_structure_type_column=FOOTPRINTS["structure_type_column"],
         footprint_units_column=FOOTPRINTS["units_column"],
@@ -119,6 +133,9 @@ def get_settings() -> SqlServerPipelineSettings:
         output_if_exists=OUTPUT["if_exists"],
         output_geometry_column=OUTPUT["geometry_column"],
         output_chunksize=OUTPUT["chunksize"],
+        output_create_native_geometry=OUTPUT["create_native_geometry"],
+        output_native_geometry_column=OUTPUT["native_geometry_column"],
+        output_native_geometry_srid=OUTPUT["native_geometry_srid"],
         preflight=OUTPUT["preflight"],
         buffer_unit_to_meters=BASELINE["buffer_unit_to_meters"],
         write_local_outputs=PIPELINE_OVERRIDES["write_local_outputs"],

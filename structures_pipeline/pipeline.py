@@ -115,6 +115,7 @@ def build_place_structures(
         acs_source=acs_source,
         overture_release=overture_release,
         census_year=resolve_census_year(config),
+        config=config,
     )
     if baseline_source:
         final = attach_baseline_proximity(final, baseline, baseline_buffer_meters)

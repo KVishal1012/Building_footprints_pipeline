@@ -62,6 +62,7 @@ def test_build_sql_server_pipeline_config_sets_baseline_and_export():
         baseline_buffer_value=100,
         footprint_table="dbo.AuthoritativeStructures",
         footprint_raw_data_source="nyc_pluto",
+        footprint_srid=4326,
         footprint_id_column="StructureID",
         footprint_structure_type_column="StructureType",
         footprint_units_column="NumUnits",
@@ -72,6 +73,9 @@ def test_build_sql_server_pipeline_config_sets_baseline_and_export():
         footprint_stories_source="nyc_pluto_num_floors",
         footprint_occupant_count_source="nyc_pluto_occupancy",
         baseline_srid=2263,
+        output_create_native_geometry=True,
+        output_native_geometry_column="Shape",
+        output_native_geometry_srid=4326,
         trusted_connection=True,
     )
 
@@ -87,6 +91,8 @@ def test_build_sql_server_pipeline_config_sets_baseline_and_export():
     assert config.sql_baseline_source["buffer_meters"] == pytest.approx(100 * US_SURVEY_FOOT_TO_METERS)
     assert config.sql_baseline_source["sqlserver_geometry_methods"] is True
     assert config.sql_footprint_source["table"] == "dbo.AuthoritativeStructures"
+    assert config.sql_footprint_source["srid"] == 4326
+    assert config.sql_footprint_source["crs"] == "EPSG:4326"
     assert config.sql_footprint_source["load_source"] == "sql_server"
     assert config.sql_footprint_source["raw_data_source"] == "nyc_pluto"
     assert config.sql_footprint_source["id_column"] == "StructureID"
@@ -100,6 +106,8 @@ def test_build_sql_server_pipeline_config_sets_baseline_and_export():
     assert config.sql_footprint_source["occupant_count_source"] == "nyc_pluto_occupancy"
     assert config.sql_export["table"] == "dbo.StructuresOutput"
     assert config.sql_export["use_explicit_schema"] is True
+    assert config.sql_export["create_native_geometry"] is True
+    assert config.sql_export["native_geometry_column"] == "Shape"
     assert config.return_dataframe is True
     assert config.write_local_outputs is False
 
@@ -137,6 +145,13 @@ def test_preflight_sql_server_pipeline_checks_tables_and_columns(monkeypatch):
         trusted_connection=True,
     )
 
+    class FakeResult:
+        def __init__(self, value=1):
+            self.value = value
+
+        def scalar(self):
+            return self.value
+
     class FakeConnection:
         def __enter__(self):
             return self
@@ -145,7 +160,7 @@ def test_preflight_sql_server_pipeline_checks_tables_and_columns(monkeypatch):
             return None
 
         def execute(self, *_args, **_kwargs):
-            return None
+            return FakeResult(1)
 
     class FakeEngine:
         def connect(self):
@@ -169,7 +184,57 @@ def test_preflight_sql_server_pipeline_checks_tables_and_columns(monkeypatch):
 
     assert result["status"] == "passed"
     assert result["checks"][0]["table"] == "dbo.AssetBaseline"
+    assert result["checks"][0]["non_null_geometry_rows"] == 1
     assert result["checks"][1]["missing_columns"] == []
+
+
+def test_preflight_sql_server_pipeline_blocks_bad_append_schema(monkeypatch):
+    settings = SqlServerPipelineSettings(
+        server_name="localhost",
+        database_name="gis",
+        output_table="dbo.StructuresOutput",
+        baseline_table="dbo.AssetBaseline",
+        baseline_geom_column="Shape",
+        baseline_id_column="AssetID",
+        baseline_buffer_value=100,
+        trusted_connection=True,
+        output_if_exists="append",
+    )
+
+    class FakeResult:
+        def scalar(self):
+            return 1
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def execute(self, *_args, **_kwargs):
+            return FakeResult()
+
+    class FakeEngine:
+        def connect(self):
+            return FakeConnection()
+
+    class FakeInspector:
+        def has_table(self, table, schema=None):
+            return (schema, table) in {("dbo", "AssetBaseline"), ("dbo", "StructuresOutput")}
+
+        def get_columns(self, table, schema=None):
+            columns = {
+                ("dbo", "AssetBaseline"): ["Shape", "AssetID"],
+                ("dbo", "StructuresOutput"): ["StructureID"],
+            }
+            return [{"name": column} for column in columns[(schema, table)]]
+
+    monkeypatch.setattr("sqlalchemy.create_engine", lambda *_args, **_kwargs: FakeEngine())
+    monkeypatch.setattr("sqlalchemy.inspect", lambda _engine: FakeInspector())
+
+    with pytest.raises(RuntimeError, match="append output table is missing columns"):
+        preflight_sql_server_pipeline(settings)
 
 
 def test_run_sql_server_pipeline_from_inputs_uses_module_functions(monkeypatch):
@@ -233,3 +298,27 @@ def test_manhattan_sql_server_example_exposes_required_contract():
     assert settings.preflight is True
     assert target["place_specs"] == [{"city": "New York", "state": "New York"}]
     assert overrides["write_local_outputs"] is False
+    assert overrides["derive_num_units"] is False
+    assert overrides["derive_occupant_count"] is False
+
+
+def test_production_sql_server_example_exposes_safe_defaults():
+    example_path = Path(__file__).resolve().parents[1] / "sql_server_inputs.production.example.py"
+    spec = importlib.util.spec_from_file_location("sql_server_inputs_production_example", example_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    settings = module.get_settings()
+    target = module.get_target()
+    overrides = module.get_pipeline_overrides()
+
+    assert settings.output_table == "dbo.StructuresOutput_Test"
+    assert settings.output_if_exists == "replace"
+    assert settings.output_create_native_geometry is True
+    assert settings.footprint_raw_data_source == "nyc_pluto"
+    assert target["all_us_cities"] is False
+    assert target["place_specs"] == [{"city": "New York", "state": "New York"}]
+    assert overrides["write_local_outputs"] is False
+    assert overrides["derive_num_units"] is False
+    assert overrides["derive_occupant_count"] is False

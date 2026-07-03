@@ -148,6 +148,8 @@ REQUIRED_OUTPUT_COLUMNS = [
     "StructureType",
     "NumUnits",
     "NumStories",
+    "HeightM",
+    "HeightSource",
     "FootprintArea_m2",
     "FootprintArea_sqft",
     "OccupantCount",

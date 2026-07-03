@@ -35,6 +35,8 @@ class PipelineConfig:
     return_dataframe: bool = False
     dataframe_preview_rows: int = 10
     write_local_outputs: bool = True
+    derive_num_units: bool = False
+    derive_occupant_count: bool = False
     parcel_sources: dict[str, dict] = field(default_factory=dict)
 
     # Normalize path and optional dict-like settings after dataclass creation.

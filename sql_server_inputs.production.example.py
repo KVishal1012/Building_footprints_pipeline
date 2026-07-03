@@ -4,17 +4,15 @@ from pathlib import Path
 
 from structures_pipeline.sql_server import SqlServerPipelineSettings
 
-# Target places to process. Add more dictionaries for more cities.
+# First pilot target. New York is the Census place; the baseline and footprint
+# filters below constrain the area of interest to Manhattan.
 PLACE_SPECS = [
-    {"city": "Houston", "state": "Texas"},
+    {"city": "New York", "state": "New York"},
 ]
-
-# Use STATE_FILTERS instead of PLACE_SPECS for whole-state runs.
 STATE_FILTERS = None
 ALL_US_CITIES = False
-DATAFRAME_PREVIEW_ROWS = 10
+DATAFRAME_PREVIEW_ROWS = 20
 
-# SQL Server connection and table inputs.
 SQL_SERVER = {
     "server_name": "tcp:YOUR_SERVER,1433",
     "database_name": "YOUR_DATABASE",
@@ -26,12 +24,11 @@ SQL_SERVER = {
     "trust_server_certificate": None,
 }
 
-# Baseline table used to build the buffered area of interest.
 BASELINE = {
-    "table": "dbo.AssetBaseline",
+    "table": "dbo.ManhattanBaseline",
     "geometry_column": "Shape",
-    "id_column": "AssetID",
-    "where": "Status = 'Active'",
+    "id_column": "BaselineID",
+    "where": "Borough = 'Manhattan'",
     "buffer_value": 250,
     "srid": 4326,
     # Buffer units:
@@ -42,32 +39,29 @@ BASELINE = {
     "buffer_unit_to_meters": None,
 }
 
-# Optional authoritative structure table. Fill these columns when SQL Server
-# should be the source of truth for attributes.
 FOOTPRINTS = {
-    "table": "dbo.AuthoritativeStructures",
+    "table": "dbo.NYC_PLUTO_Structures",
     "raw_data_source": "nyc_pluto",
     "geometry_column": "Shape",
     "srid": 4326,
     "optional": False,
-    "id_column": "StructureID",
-    "structure_type_column": "StructureType",
-    "units_column": "NumUnits",
-    "stories_column": "NumStories",
-    "height_column": "HeightM",
-    "occupant_count_column": "OccupantCount",
-    "where": None,
+    "id_column": "BBL",
+    "structure_type_column": "LandUse",
+    "units_column": "UnitsTotal",
+    "stories_column": "NumFloors",
+    "height_column": None,
+    "occupant_count_column": None,
+    "where": "Borough = 'MN'",
     "structure_type_source": "nyc_pluto_land_use",
     "units_source": "nyc_pluto_units_total",
     "stories_source": "nyc_pluto_num_floors",
-    "height_source": "nyc_pluto_height_roof",
-    "occupant_count_source": "nyc_pluto_occupancy",
+    "height_source": None,
+    "occupant_count_source": None,
 }
 
-# Final SQL Server table that receives the exported structures dataframe.
 OUTPUT = {
-    "table": "dbo.StructuresOutput",
-    "if_exists": "append",
+    "table": "dbo.StructuresOutput_Test",
+    "if_exists": "replace",
     "geometry_column": "geometry_wkt",
     "chunksize": 1000,
     "preflight": True,
@@ -76,7 +70,6 @@ OUTPUT = {
     "native_geometry_srid": 4326,
 }
 
-# Pipeline switches. Local JSON/parquet outputs are disabled by default.
 PIPELINE_OVERRIDES = {
     "data_dir": Path("data"),
     "output_dir": Path("data/output"),
@@ -89,14 +82,11 @@ PIPELINE_OVERRIDES = {
     "use_census": True,
     "use_parcels": False,
     "write_local_outputs": False,
-    # Production-safe defaults. Keep NumUnits and OccupantCount NULL unless a
-    # trusted source column provides them.
     "derive_num_units": False,
     "derive_occupant_count": False,
 }
 
 
-# Build the SQL Server settings consumed by the runner.
 def get_settings() -> SqlServerPipelineSettings:
     """Build the SQL Server settings consumed by the runner."""
     return SqlServerPipelineSettings(
@@ -144,7 +134,6 @@ def get_settings() -> SqlServerPipelineSettings:
     )
 
 
-# Return target selectors for run_pipeline.
 def get_target() -> dict:
     """Return target selectors for run_pipeline."""
     return {
@@ -154,7 +143,6 @@ def get_target() -> dict:
     }
 
 
-# Return non-SQL pipeline options.
 def get_pipeline_overrides() -> dict:
     """Return non-SQL pipeline options."""
     return dict(PIPELINE_OVERRIDES)

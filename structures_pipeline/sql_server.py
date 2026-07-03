@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from types import ModuleType
 from urllib.parse import quote_plus
 
+from structures_pipeline.constants import REQUIRED_OUTPUT_COLUMNS
 from structures_pipeline.config import PipelineConfig
 from structures_pipeline.pipeline import run_pipeline
 
@@ -39,6 +41,8 @@ class SqlServerPipelineSettings:
     footprint_table: str | None = None
     footprint_raw_data_source: str | None = None
     footprint_geom_column: str = "Shape"
+    footprint_srid: int | None = None
+    footprint_optional: bool = False
     footprint_id_column: str | None = None
     footprint_structure_type_column: str | None = None
     footprint_units_column: str | None = None
@@ -64,6 +68,9 @@ class SqlServerPipelineSettings:
     output_if_exists: str = "append"
     output_geometry_column: str = "geometry_wkt"
     output_chunksize: int = 1000
+    output_create_native_geometry: bool = False
+    output_native_geometry_column: str = "Shape"
+    output_native_geometry_srid: int = 4326
     preflight: bool = True
     buffer_unit_to_meters: float | None = None
     write_local_outputs: bool = False
@@ -135,6 +142,44 @@ def configured_footprint_columns(settings: SqlServerPipelineSettings) -> list[st
     return [column for column in columns if column]
 
 
+def _sqlserver_quoted_name(name: str) -> str:
+    """Validate and quote a dotted SQL Server identifier."""
+    parts = [part.strip() for part in str(name).split(".") if part.strip()]
+    if not parts:
+        raise ValueError("SQL Server identifier cannot be empty")
+    if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_@$#]*", part) for part in parts):
+        raise ValueError(f"Unsafe SQL Server identifier: {name}")
+    return ".".join(f"[{part}]" for part in parts)
+
+
+def _non_null_geometry_count_sql(table: str, geom_column: str, where: str | None = None) -> str:
+    """Build a count query for rows with non-null SQL Server geometry."""
+    predicate = f"{_sqlserver_quoted_name(geom_column)} IS NOT NULL"
+    if where:
+        predicate = f"({where}) AND {predicate}"
+    return f"SELECT COUNT(*) AS row_count FROM {_sqlserver_quoted_name(table)} WHERE {predicate}"
+
+
+def _scalar_int(conn, sql, text) -> int:
+    """Execute a SQLAlchemy text query and return the first scalar integer."""
+    result = conn.execute(text(sql))
+    if hasattr(result, "scalar"):
+        value = result.scalar()
+    elif hasattr(result, "scalar_one"):
+        value = result.scalar_one()
+    else:
+        row = result.fetchone()
+        value = row[0] if row is not None else 0
+    return int(value or 0)
+
+
+def expected_sql_export_columns(settings: SqlServerPipelineSettings) -> list[str]:
+    """Return the approved columns expected on an append-mode SQL export table."""
+    columns = [column for column in REQUIRED_OUTPUT_COLUMNS if column != "geometry"]
+    columns.append(settings.output_geometry_column)
+    return columns
+
+
 # Validate settings before an expensive pipeline/export run.
 def validate_sql_server_settings(settings: SqlServerPipelineSettings) -> dict:
     """Validate settings before an expensive pipeline/export run."""
@@ -169,6 +214,8 @@ def validate_sql_server_settings(settings: SqlServerPipelineSettings) -> dict:
         "output_table": settings.output_table,
         "baseline_buffer_meters": buffer_meters,
         "output_if_exists": settings.output_if_exists,
+        "footprint_optional": settings.footprint_optional,
+        "create_native_geometry": settings.output_create_native_geometry,
     }
 
 
@@ -186,36 +233,69 @@ def preflight_sql_server_pipeline(settings: SqlServerPipelineSettings) -> dict:
         engine = create_engine(connection)
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        inspector = inspect(engine)
-        checks = []
-        for table_name, required_columns in (
-            (settings.baseline_table, [settings.baseline_geom_column, settings.baseline_id_column]),
-            (settings.footprint_table, configured_footprint_columns(settings)),
-        ):
-            if not table_name:
-                continue
-            schema, table = table_parts(table_name)
-            exists = inspector.has_table(table, schema=schema)
-            available_columns = []
-            if exists:
-                available_columns = [column["name"] for column in inspector.get_columns(table, schema=schema)]
-            missing_columns = [
-                column for column in required_columns if column and column not in available_columns
-            ]
-            checks.append(
-                {
-                    "table": table_name,
-                    "exists": bool(exists),
-                    "required_columns": [column for column in required_columns if column],
-                    "missing_columns": missing_columns,
-                }
-            )
-            if not exists:
-                raise RuntimeError(f"SQL Server preflight failed: table not found: {table_name}")
-            if missing_columns:
-                raise RuntimeError(
-                    f"SQL Server preflight failed: {table_name} is missing columns {missing_columns}"
+            inspector = inspect(engine)
+            checks = []
+            for table_name, required_columns in (
+                (settings.baseline_table, [settings.baseline_geom_column, settings.baseline_id_column]),
+                (settings.footprint_table, configured_footprint_columns(settings)),
+            ):
+                if not table_name:
+                    continue
+                schema, table = table_parts(table_name)
+                exists = inspector.has_table(table, schema=schema)
+                available_columns = []
+                if exists:
+                    available_columns = [column["name"] for column in inspector.get_columns(table, schema=schema)]
+                missing_columns = [
+                    column for column in required_columns if column and column not in available_columns
+                ]
+                checks.append(
+                    {
+                        "table": table_name,
+                        "exists": bool(exists),
+                        "required_columns": [column for column in required_columns if column],
+                        "missing_columns": missing_columns,
+                    }
                 )
+                if not exists:
+                    raise RuntimeError(f"SQL Server preflight failed: table not found: {table_name}")
+                if missing_columns:
+                    raise RuntimeError(
+                        f"SQL Server preflight failed: {table_name} is missing columns {missing_columns}"
+                    )
+                geom_column = (
+                    settings.baseline_geom_column
+                    if table_name == settings.baseline_table
+                    else settings.footprint_geom_column
+                )
+                where = settings.baseline_where if table_name == settings.baseline_table else settings.footprint_where
+                row_count = _scalar_int(conn, _non_null_geometry_count_sql(table_name, geom_column, where), text)
+                checks[-1]["non_null_geometry_rows"] = row_count
+                if table_name == settings.baseline_table and row_count == 0:
+                    raise RuntimeError("SQL Server preflight failed: baseline table returned no non-null geometries")
+                if table_name == settings.footprint_table and row_count == 0 and not settings.footprint_optional:
+                    raise RuntimeError("SQL Server preflight failed: footprint table returned no non-null geometries")
+
+            if settings.output_if_exists == "append":
+                schema, table = table_parts(settings.output_table)
+                if inspector.has_table(table, schema=schema):
+                    available = [column["name"] for column in inspector.get_columns(table, schema=schema)]
+                    missing_output_columns = [
+                        column for column in expected_sql_export_columns(settings) if column not in available
+                    ]
+                    checks.append(
+                        {
+                            "table": settings.output_table,
+                            "exists": True,
+                            "required_columns": expected_sql_export_columns(settings),
+                            "missing_columns": missing_output_columns,
+                        }
+                    )
+                    if missing_output_columns:
+                        raise RuntimeError(
+                            "SQL Server preflight failed: append output table is missing columns "
+                            f"{missing_output_columns}"
+                        )
     except RuntimeError:
         raise
     except Exception as exc:
@@ -265,7 +345,8 @@ def build_sql_server_pipeline_config(
             "stories_source": settings.footprint_stories_source,
             "height_source": settings.footprint_height_source,
             "occupant_count_source": settings.footprint_occupant_count_source,
-            "crs": f"EPSG:{settings.baseline_srid}",
+            "crs": f"EPSG:{int(settings.footprint_srid or settings.baseline_srid)}",
+            "srid": int(settings.footprint_srid or settings.baseline_srid),
             "source_name": settings.footprint_raw_data_source or settings.footprint_table,
             "sqlserver_geometry_methods": True,
         }
@@ -289,6 +370,9 @@ def build_sql_server_pipeline_config(
             "geometry_column": settings.output_geometry_column,
             "chunksize": settings.output_chunksize,
             "use_explicit_schema": True,
+            "create_native_geometry": settings.output_create_native_geometry,
+            "native_geometry_column": settings.output_native_geometry_column,
+            "native_geometry_srid": settings.output_native_geometry_srid,
         },
         return_dataframe=True,
         write_local_outputs=settings.write_local_outputs,
@@ -305,8 +389,11 @@ def run_sql_server_pipeline(
     **config_overrides,
 ) -> dict:
     """Run the pipeline with SQL Server baseline/export settings and return the result dict."""
-    preflight_result = preflight_sql_server_pipeline(settings) if settings.preflight else None
     config = build_sql_server_pipeline_config(settings, **config_overrides)
+    preflight_result = preflight_sql_server_pipeline(settings) if settings.preflight else None
+    if preflight_result is not None:
+        preflight_result["derive_num_units"] = bool(config.derive_num_units)
+        preflight_result["derive_occupant_count"] = bool(config.derive_occupant_count)
     result = run_pipeline(
         place_specs=place_specs,
         state_filters=state_filters,

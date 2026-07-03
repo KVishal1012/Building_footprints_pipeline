@@ -129,10 +129,15 @@ def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
     if table and query:
         raise ValueError("SQL source can use table or query, not both")
     use_sqlserver_methods = bool(source.get("sqlserver_geometry_methods"))
+    params = {}
     if query:
         sql = str(query)
     elif table and use_sqlserver_methods:
-        sql = _sqlserver_geometry_select(source)
+        if source.get("aoi_wkt"):
+            sql = _sqlserver_geometry_select_with_aoi(source)
+            params["aoi_wkt"] = source["aoi_wkt"]
+        else:
+            sql = _sqlserver_geometry_select(source)
     elif table:
         columns = list(source.get("columns") or [])
         if not columns and any(
@@ -167,7 +172,7 @@ def read_sql_geometry_source(source: dict, config: PipelineConfig) -> gpd.GeoDat
 
     engine = create_engine(connection)
     with engine.connect() as conn:
-        df = pd.read_sql_query(text(sql), conn)
+        df = pd.read_sql_query(text(sql), conn, params=params)
     geom_column = source.get("geom_column", "geom")
     if use_sqlserver_methods and not query:
         geom_column = "geometry_wkb"
@@ -223,6 +228,31 @@ def _sqlserver_geometry_select(source: dict) -> str:
     return f"SELECT {', '.join(select_parts)} FROM {_sqlserver_name(table)}{where}"
 
 
+def _source_srid(source: dict) -> int:
+    """Return the configured SQL source SRID as an integer."""
+    if source.get("srid"):
+        return int(source["srid"])
+    crs = str(source.get("crs") or "EPSG:4326").upper()
+    if crs.startswith("EPSG:"):
+        return int(crs.split(":", 1)[1])
+    return 4326
+
+
+def _sqlserver_geometry_select_with_aoi(source: dict) -> str:
+    """Build a SQL Server geometry SELECT filtered by a parameterized AOI WKT."""
+    geom_column = source.get("geom_column", "geom")
+    srid = _source_srid(source)
+    base_sql = _sqlserver_geometry_select(source)
+    spatial_filter = (
+        f"{_sqlserver_name(geom_column)}.STIntersects("
+        f"geometry::STGeomFromText(:aoi_wkt, {srid})"
+        f") = 1"
+    )
+    if " WHERE " in base_sql.upper():
+        return f"{base_sql} AND {spatial_filter}"
+    return f"{base_sql} WHERE {spatial_filter}"
+
+
 # Split an optional schema-qualified table name for pandas to_sql.
 def _sql_table_parts(table: str) -> tuple[str | None, str]:
     """Split an optional schema-qualified table name for pandas to_sql."""
@@ -260,7 +290,12 @@ def dataframe_for_sql_export(
 
 
 # Build a compact export QA report for SQL-only runs.
-def sql_export_quality_report(frame: pd.DataFrame, *, source_columns: list[str] | None = None) -> dict:
+def sql_export_quality_report(
+    frame: pd.DataFrame,
+    *,
+    source_columns: list[str] | None = None,
+    geometry_column: str = "geometry_wkt",
+) -> dict:
     """Build a compact export QA report for SQL-only runs."""
     critical_columns = [
         "StructureID",
@@ -297,10 +332,58 @@ def sql_export_quality_report(frame: pd.DataFrame, *, source_columns: list[str] 
         "datasource_completeness": datasource_completeness,
     }
     allowed_columns = set(REQUIRED_OUTPUT_COLUMNS) - {"geometry"}
-    allowed_columns.add("geometry_wkt")
+    allowed_columns.add(geometry_column)
     report["source_had_unapproved_columns"] = bool(report["unexpected_columns_dropped"])
     report["approved_output_contract"] = set(frame.columns).issubset(allowed_columns)
     return report
+
+
+def _populate_native_sqlserver_geometry(
+    engine,
+    *,
+    schema: str | None,
+    table_name: str,
+    geometry_column: str,
+    native_geometry_column: str,
+    srid: int,
+) -> dict:
+    """Create and populate a native SQL Server geometry column after WKT export."""
+    from sqlalchemy import text
+
+    qualified_table = _sqlserver_name(f"{schema}.{table_name}" if schema else table_name)
+    quoted_geometry_column = _sqlserver_name(geometry_column)
+    quoted_native_column = _sqlserver_name(native_geometry_column)
+    object_name = f"{schema}.{table_name}" if schema else table_name
+    object_literal = object_name.replace("'", "''")
+    native_literal = native_geometry_column.replace("'", "''")
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                f"""
+                IF COL_LENGTH('{object_literal}', '{native_literal}') IS NULL
+                BEGIN
+                    ALTER TABLE {qualified_table} ADD {quoted_native_column} geometry NULL
+                END
+                """
+            )
+        )
+        conn.execute(
+            text(
+                f"""
+                UPDATE {qualified_table}
+                SET {quoted_native_column} = geometry::STGeomFromText({quoted_geometry_column}, :srid)
+                WHERE {quoted_native_column} IS NULL
+                  AND {quoted_geometry_column} IS NOT NULL
+                """
+            ),
+            {"srid": int(srid)},
+        )
+    return {
+        "created_or_verified": True,
+        "native_geometry_column": native_geometry_column,
+        "native_geometry_srid": int(srid),
+    }
 
 
 # Return explicit SQLAlchemy dtypes for important SQL Server export columns.
@@ -381,7 +464,13 @@ def export_dataframe_to_sql_server(
         for column in gdf.columns
         if column != gdf.geometry.name
     ] + [geometry_column]
-    quality_report = sql_export_quality_report(frame, source_columns=source_columns)
+    quality_report = sql_export_quality_report(
+        frame,
+        source_columns=source_columns,
+        geometry_column=geometry_column,
+    )
+    if not quality_report["approved_output_contract"]:
+        raise ValueError("SQL export blocked: dataframe contains columns outside the approved output contract")
     engine_kwargs = {}
     if str(connection).lower().startswith("mssql") and export_config.get("fast_executemany", True):
         engine_kwargs["fast_executemany"] = True
@@ -397,6 +486,22 @@ def export_dataframe_to_sql_server(
             chunksize=int(export_config.get("chunksize") or 1000),
             dtype=dtype,
         )
+        native_geometry = None
+        if export_config.get("create_native_geometry"):
+            if str(connection).lower().startswith("mssql"):
+                native_geometry = _populate_native_sqlserver_geometry(
+                    engine,
+                    schema=schema,
+                    table_name=table_name,
+                    geometry_column=geometry_column,
+                    native_geometry_column=export_config.get("native_geometry_column") or "Shape",
+                    srid=int(export_config.get("native_geometry_srid") or 4326),
+                )
+            else:
+                native_geometry = {
+                    "created_or_verified": False,
+                    "reason": "native SQL Server geometry is only created for mssql connections",
+                }
     except Exception as exc:
         message = str(exc)
         if "driver" in message.lower() or "odbc" in message.lower():
@@ -411,6 +516,7 @@ def export_dataframe_to_sql_server(
         "geometry_column": geometry_column,
         "if_exists": export_config.get("if_exists", "fail"),
         "quality_report": quality_report,
+        "native_geometry": native_geometry,
     }
 
 
@@ -567,6 +673,16 @@ def load_sql_footprints(
     source = config.sql_footprint_source
     if not config.use_sql or not source:
         return empty_gdf()
+    source = dict(source)
+    if source.get("sqlserver_geometry_methods") and not source.get("query"):
+        filter_crs = source.get("crs") or f"EPSG:{_source_srid(source)}"
+        boundary_for_filter = boundary.to_crs(filter_crs)
+        unioned = (
+            boundary_for_filter.geometry.union_all()
+            if hasattr(boundary_for_filter.geometry, "union_all")
+            else boundary_for_filter.geometry.unary_union
+        )
+        source["aoi_wkt"] = unioned.wkt
     try:
         raw = read_sql_geometry_source(source, config)
     except Exception as exc:

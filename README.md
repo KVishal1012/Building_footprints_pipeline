@@ -113,6 +113,12 @@ For the first Manhattan production pilot, start from the Manhattan template inst
 cp sql_server_inputs.manhattan.example.py sql_server_inputs.py
 ```
 
+For a stricter pilot template that exports to a test table first:
+
+```bash
+cp sql_server_inputs.production.example.py sql_server_inputs.py
+```
+
 Edit `sql_server_inputs.py`, then run:
 
 ```bash
@@ -133,11 +139,88 @@ Use `FOOTPRINTS` for the authoritative structure table loaded through SQL Server
 Before a table export is written, the SQL Server runner:
 
 - preflights the SQL Server connection, baseline table, footprint table, and configured columns
+- verifies baseline and configured footprint geometry columns have non-null rows
+- checks append-mode output table schemas when the table already exists
 - returns and prints the final structures dataframe preview
 - exports the dataframe as the last step only
 - blocks populated `StructureType`, `NumStories`, `NumUnits`, or `OccupantCount` values when the matching source column is missing
 - writes only the approved final structure columns plus `geometry_wkt` to SQL Server
+- can create and populate a native SQL Server `geometry` column after export when `create_native_geometry=True`
 - logs a quality report with row count, exported columns, dropped helper columns, null counts, datasource completeness, and output table details
+
+## Recommended first SQL Server pilot
+
+Do not start with `--all-us-cities`.
+
+Recommended order:
+
+1. Copy `sql_server_inputs.production.example.py` to `sql_server_inputs.py`.
+2. Use one city only.
+3. Use one baseline table.
+4. Use one authoritative footprint table.
+5. Keep `derive_num_units=False`.
+6. Keep `derive_occupant_count=False`.
+7. Export to a test output table first.
+8. Review the dataframe preview.
+9. Review the SQL export quality report.
+10. Add the native SQL Server geometry column after export if needed.
+
+Recommended output table pattern:
+
+```sql
+CREATE TABLE dbo.StructuresOutput_Test (
+    StructureID NVARCHAR(255) NOT NULL,
+    PlaceGEOID NVARCHAR(50) NULL,
+    City NVARCHAR(255) NULL,
+    State NVARCHAR(255) NULL,
+    StateFP NVARCHAR(10) NULL,
+    Country NVARCHAR(50) NULL,
+    LoadSource NVARCHAR(255) NULL,
+    RawDataSource NVARCHAR(255) NULL,
+    FootprintSource NVARCHAR(255) NULL,
+    OvertureID NVARCHAR(255) NULL,
+    MicrosoftID NVARCHAR(255) NULL,
+    StructureType NVARCHAR(255) NULL,
+    NumUnits FLOAT NULL,
+    NumStories FLOAT NULL,
+    HeightM FLOAT NULL,
+    HeightSource NVARCHAR(MAX) NULL,
+    FootprintArea_m2 FLOAT NULL,
+    FootprintArea_sqft FLOAT NULL,
+    OccupantCount FLOAT NULL,
+    StructureTypeRaw NVARCHAR(MAX) NULL,
+    StructureTypeSource NVARCHAR(MAX) NULL,
+    StructureTypeConfidence FLOAT NULL,
+    NumUnitsSource NVARCHAR(MAX) NULL,
+    NumUnitsConfidence FLOAT NULL,
+    NumStoriesSource NVARCHAR(MAX) NULL,
+    NumStoriesConfidence FLOAT NULL,
+    OccupantCountSource NVARCHAR(MAX) NULL,
+    OccupantCountMethod NVARCHAR(MAX) NULL,
+    OccupantCountConfidence FLOAT NULL,
+    OvertureRelease NVARCHAR(255) NULL,
+    CensusYear INT NULL,
+    ACSSource NVARCHAR(MAX) NULL,
+    NSISource NVARCHAR(MAX) NULL,
+    MicrosoftSource NVARCHAR(MAX) NULL,
+    BaselineID NVARCHAR(255) NULL,
+    BaselineDistance_m FLOAT NULL,
+    BaselineBuffer_m FLOAT NULL,
+    FootprintAssignmentMethod NVARCHAR(255) NULL,
+    FootprintAssignmentOverlapRatio FLOAT NULL,
+    geometry_wkt NVARCHAR(MAX) NULL,
+    Shape geometry NULL
+);
+
+UPDATE dbo.StructuresOutput_Test
+SET Shape = geometry::STGeomFromText(geometry_wkt, 4326)
+WHERE Shape IS NULL
+  AND geometry_wkt IS NOT NULL;
+
+CREATE SPATIAL INDEX SIDX_StructuresOutput_Test_Shape
+ON dbo.StructuresOutput_Test(Shape)
+USING GEOMETRY_AUTO_GRID;
+```
 
 Run the local verification suite before a production pilot:
 
@@ -187,7 +270,7 @@ df = result["dataframe"]
 print(df.head())
 ```
 
-`baseline_buffer_value` is converted to meters before the pipeline buffers the baseline. EPSG:4326 and EPSG:4269 are treated as meter-based SQL Server geography buffers, common US-foot SRIDs are converted to meters, and `buffer_unit_to_meters` can be set for any custom SRID.
+`baseline_buffer_value` is converted to meters before the pipeline buffers the baseline. EPSG:4326 and EPSG:4269 are treated as meter-based SQL Server geography buffers, common US-foot SRIDs are converted to meters, and `buffer_unit_to_meters` can be set for any custom SRID. If your baseline SRID is US survey feet, set `buffer_unit_to_meters=1200 / 3937`.
 
 The SQL Server module defaults to table-only mode and does not write local JSON or parquet outputs. For CLI runs, use `--no-local-outputs` to skip city parquet, master parquet, QA parquet, and manifest JSON files.
 
@@ -209,7 +292,8 @@ Required attributes include `StructureType`, `NumUnits`, `NumStories`, `Footprin
 - Footprints are assigned to cities by representative point first, then largest boundary overlap; full building geometry is preserved.
 - Overture footprints are primary. Microsoft footprints are retained only when representative-point and overlap checks show they are not duplicates.
 - Missing units, stories, structure type, and occupant fields remain NULL unless a source or explicit labeled estimate fills them.
-- Occupants use NSI population/employment/student fields first. Residential fallback uses `NumUnits * ACS B25010 average household size` and records the method.
+- `NumUnits` uses configured source columns only by default. The single-family unit estimate is disabled unless `derive_num_units=True`.
+- `OccupantCount` uses configured SQL/source columns only by default. NSI and ACS occupant estimates are disabled unless `derive_occupant_count=True`.
 
 ## Data Sources
 
