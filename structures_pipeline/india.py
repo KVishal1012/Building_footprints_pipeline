@@ -48,7 +48,7 @@ TAMIL_NADU_CITY_REGISTRY: dict[str, IndiaCityRegistryEntry] = {
         coverage_tier="Tier 4",
         status="active_proof_market",
         expansion_order=1,
-        default_source_name="chennai_overture_osm_fallback",
+        default_source_name="openstreetmap",
         default_source_file=CHENNAI_SOURCE_FILE,
         known_gap="Authoritative municipal building attributes are not yet onboarded.",
     ),
@@ -120,6 +120,15 @@ TAMIL_NADU_CITY_REGISTRY: dict[str, IndiaCityRegistryEntry] = {
 }
 
 INDIA_SOURCE_REGISTRY: dict[str, IndiaSourceRegistryEntry] = {
+    "openstreetmap": IndiaSourceRegistryEntry(
+        source_name="openstreetmap",
+        source_family="open_community",
+        source_authority="OpenStreetMap contributors",
+        refresh_cadence="monthly_or_on_source_update",
+        source_as_of="source_manifest",
+        treatment="source_footprint_and_tag",
+        notes="Real OSM building footprints clipped to the documented GCC ward boundary.",
+    ),
     "chennai_overture_osm_fallback": IndiaSourceRegistryEntry(
         source_name="chennai_overture_osm_fallback",
         source_family="overture_osm_fallback",
@@ -192,6 +201,7 @@ def build_india_refresh_config(
     city_slug: str = "chennai",
     source_name: str | None = None,
     source_as_of: str | None = None,
+    source_run_id: str | None = None,
     data_refresh_timestamp: str | None = None,
     dry_run: bool = False,
     promote_to_canonical: bool = True,
@@ -211,6 +221,7 @@ def build_india_refresh_config(
         refresh_source_family=source.source_family,
         refresh_source_as_of=resolved_source_as_of,
         refresh_cadence=source.refresh_cadence,
+        refresh_source_run_id=source_run_id,
         data_refresh_timestamp=data_refresh_timestamp,
         dry_run=dry_run,
         promote_to_canonical=promote_to_canonical,
@@ -225,6 +236,7 @@ def build_india_refresh_config(
             "state_code": city.state_code,
             "coverage_tier": city.coverage_tier,
             "source_authority": source.source_authority,
+            "provenance_tier": "open_community",
             "source_treatment": source.treatment,
             "known_gap": city.known_gap,
             "last_refreshed": data_refresh_timestamp,

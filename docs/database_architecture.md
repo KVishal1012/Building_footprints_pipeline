@@ -37,6 +37,7 @@ Railway / Fly.io / scheduled job
 | `staging.raw_structures` | Raw source drops before QA normalization. |
 | `staging.change_log` | Delta logic output: inserts, updates, deletes, changed fields, and before/after payloads. |
 | `staging.promotion_failures` | Rows blocked by QA/provenance gates before canonical promotion. |
+| `staging.promotion_candidates` | QA-approved rows held until atomic refresh finalization. |
 | `public.structures` | Canonical approved structure database exposed through Supabase REST/PostgREST. |
 | `public.coverage_registry` | Coverage tier and completeness metrics by city/state. |
 | `public.release_manifest` | Versioned release metadata and delivery package snapshots. |
@@ -66,7 +67,10 @@ The refresh layer exposes four Python interfaces:
 | `promote_valid_changes(source_run_id, config)` | Runs QA gates and upserts valid rows into canonical structures. |
 | `run_refresh_cycle(source_name, city, state, config)` | Runs staging, detection, promotion, coverage, and release metadata. |
 
-The local implementation uses an in-memory store for dry-runs and tests. Production runs use the Supabase-backed store through PostgREST with the service role key read from `SUPABASE_SERVICE_ROLE_KEY`.
+The local implementation uses an in-memory store for dry-runs and tests. Production
+runs use the Supabase-backed store through PostgREST with the service role key read
+from `SUPABASE_SERVICE_ROLE_KEY`. Writes are bounded, reads are paginated, transient
+requests retry with backoff, and approved candidates are finalized in one transaction.
 
 ## Delivery Positioning
 

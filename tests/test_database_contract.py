@@ -45,3 +45,16 @@ def test_supabase_refresh_migration_contains_live_schema_contract():
     assert "num_units_source text" in migration
     assert "occupant_count_source text" in migration
     assert "data_refresh_timestamp timestamptz not null" in migration
+
+
+def test_chennai_lifecycle_migration_has_atomic_and_security_gates():
+    sql = Path("migrations/002_chennai_refresh_lifecycle.sql").read_text().lower()
+
+    assert "staging.promotion_candidates" in sql
+    assert "finalize_structure_refresh" in sql
+    assert "security invoker" in sql
+    assert "security definer" not in sql
+    assert "service_role is required" in sql
+    assert "enable row level security" in sql
+    assert "structures_ai_not_authoritative" in sql
+    assert "source_run_id, raw_record_id" in sql

@@ -33,8 +33,8 @@ def test_india_refresh_config_uses_chennai_source_defaults():
     assert config.country == "India"
     assert config.refresh_city == "Chennai"
     assert config.refresh_state == "Tamil Nadu"
-    assert config.refresh_source_name == "chennai_overture_osm_fallback"
-    assert config.refresh_source_family == "overture_osm_fallback"
+    assert config.refresh_source_name == "openstreetmap"
+    assert config.refresh_source_family == "open_community"
     assert config.refresh_metadata["branch"] == "India_Structure_AI"
     assert config.refresh_metadata["coverage_tier"] == "Tier 4"
     assert config.refresh_metadata["last_refreshed"] == "2026-06-23T12:00:00+00:00"
@@ -55,6 +55,7 @@ def test_india_source_registry_has_no_ai_authoritative_source():
         assert "prediction" not in text
         assert row["treatment"] in {
             "footprint_and_fallback",
+            "source_footprint_and_tag",
             "authoritative_when_acquired",
         }
 

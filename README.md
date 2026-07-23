@@ -57,6 +57,23 @@ python scripts/build_structure_exposure.py \
 
 The exposure layer is documented in [docs/structure_exposure_layer.md](docs/structure_exposure_layer.md). It keeps structure facts separate from hazard inference and reports missing attributes as completeness gaps.
 
+### Chennai Real-Source Refresh
+
+The production path uses locally acquired OpenStreetMap buildings, GCC wards, and a
+source manifest. Source paths and Supabase settings stay in the ignored
+`india_local_inputs.py` module.
+
+```bash
+cp india_local_inputs.example.py india_local_inputs.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/run_chennai_real_source.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/run_chennai_supabase_refresh.py
+```
+
+Run `migrations/001_supabase_refresh_schema.sql` and
+`migrations/002_chennai_refresh_lifecycle.sql` in a dedicated Chennai Supabase
+project before remote promotion. Full gates and operator settings are documented in
+[docs/chennai_supabase_lifecycle.md](docs/chennai_supabase_lifecycle.md).
+
 Current Tamil Nadu expansion order:
 
 1. Chennai

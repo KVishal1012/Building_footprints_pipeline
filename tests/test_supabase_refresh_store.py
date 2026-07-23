@@ -190,3 +190,92 @@ def test_payload_conversion_helpers_match_supabase_table_shapes():
     assert coverage["source_summary"]["has_authoritative_source"] is True
     assert round_trip["StructureID"] == "s1"
     assert round_trip["NumStoriesSource"] == "nyc_pluto_num_floors"
+
+
+def test_supabase_writes_large_payloads_in_bounded_batches():
+    session = FakeSession()
+    store = SupabaseRefreshStore(
+        _config(supabase_batch_size=2),
+        session=session,
+        service_key="secret",
+    )
+
+    store.insert_raw_rows(
+        {
+            "source_run_id": "run-1",
+            "raw_record_id": f"raw-{index}",
+        }
+        for index in range(5)
+    )
+
+    assert [len(call["json"]) for call in session.calls] == [2, 2, 1]
+    assert all(
+        call["params"]["on_conflict"] == "source_run_id,raw_record_id"
+        for call in session.calls
+    )
+
+
+def test_supabase_reads_every_page():
+    session = FakeSession(
+        responses=[
+            FakeResponse([{"structure_id": "s1"}, {"structure_id": "s2"}]),
+            FakeResponse([{"structure_id": "s3"}]),
+        ]
+    )
+    store = SupabaseRefreshStore(
+        _config(supabase_page_size=2),
+        session=session,
+        service_key="secret",
+    )
+
+    rows = store.canonical_rows(city="Chennai", state="Tamil Nadu")
+
+    assert [row["StructureID"] for row in rows] == ["s1", "s2", "s3"]
+    assert session.calls[0]["params"]["offset"] == 0
+    assert session.calls[1]["params"]["offset"] == 2
+    assert session.calls[0]["params"]["city"] == "eq.Chennai"
+
+
+def test_supabase_retries_transient_response():
+    session = FakeSession(
+        responses=[
+            FakeResponse({"error": "busy"}, status_code=503),
+            FakeResponse([]),
+        ]
+    )
+    store = SupabaseRefreshStore(
+        _config(supabase_retry_backoff_sec=0),
+        session=session,
+        service_key="secret",
+    )
+
+    assert store.canonical_rows() == []
+    assert len(session.calls) == 2
+
+
+def test_supabase_atomic_finalize_uses_service_rpc_payload():
+    session = FakeSession()
+    store = SupabaseRefreshStore(_config(), session=session, service_key="secret")
+
+    store.finalize_refresh(
+        "run-1",
+        [
+            {
+                "City": "Chennai",
+                "State": "Tamil Nadu",
+                "CoverageTier": "Tier 4",
+                "row_count": 1,
+            }
+        ],
+        {
+            "release_id": "release-1",
+            "generated_at": "2026-07-23T12:00:00+00:00",
+            "schema_version": "2.0",
+            "row_count": 1,
+        },
+    )
+
+    call = session.calls[0]
+    assert call["url"].endswith("/rest/v1/rpc/finalize_structure_refresh")
+    assert call["json"]["p_source_run_id"] == "run-1"
+    assert call["json"]["p_release_manifest"]["release_id"] == "release-1"

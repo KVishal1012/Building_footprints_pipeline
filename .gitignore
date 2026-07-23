@@ -26,10 +26,15 @@ sql_server_inputs.py
 ai_inputs.py
 models/
 
+# Local India source paths and Supabase runtime settings
+india_local_inputs.py
+
 # Pipeline data and generated outputs
 cache/
 data/raw/
 data/output/
+data/local/
+data/derived/
 *.state
 
 # Large local geospatial exports

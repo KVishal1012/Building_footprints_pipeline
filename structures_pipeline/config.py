@@ -56,7 +56,14 @@ class PipelineConfig:
     refresh_source_family: str | None = None
     refresh_source_as_of: str | None = None
     refresh_cadence: str | None = None
+    refresh_source_run_id: str | None = None
     data_refresh_timestamp: str | None = None
+    refresh_require_nonempty: bool = True
+    refresh_compact_results: bool = False
+    supabase_batch_size: int = 500
+    supabase_page_size: int = 1000
+    supabase_max_retries: int = 4
+    supabase_retry_backoff_sec: float = 0.5
     dry_run: bool = False
     promote_to_canonical: bool = True
     write_release_metadata: bool = False
@@ -88,6 +95,7 @@ class PipelineConfig:
                 "source_runs_table": "staging.source_runs",
                 "change_log_table": "staging.change_log",
                 "promotion_failures_table": "staging.promotion_failures",
+                "promotion_candidates_table": "staging.promotion_candidates",
                 "canonical_table": "public.structures",
                 "coverage_table": "public.coverage_registry",
                 "release_table": "public.release_manifest",

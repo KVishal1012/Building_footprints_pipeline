@@ -45,9 +45,20 @@ def load_structure_frame(path: Path) -> gpd.GeoDataFrame:
     return normalize_structure_frame(frame)
 
 
-def load_ward_frame(path: Path, *, ward_id_column: str = "ward_no") -> gpd.GeoDataFrame:
-    """Load ward polygons and validate ward identifiers and geometry health."""
-    return normalize_ward_frame(gpd.read_file(path), ward_id_column=ward_id_column)
+def load_ward_frame(
+    path: Path,
+    *,
+    ward_id_column: str = "ward_no",
+    expected_ward_count: int | None = None,
+    allow_overlaps: bool = False,
+) -> gpd.GeoDataFrame:
+    """Load wards and enforce identifier, geometry, count, and overlap gates."""
+    return normalize_ward_frame(
+        gpd.read_file(path),
+        ward_id_column=ward_id_column,
+        expected_ward_count=expected_ward_count,
+        allow_overlaps=allow_overlaps,
+    )
 
 
 def normalize_structure_frame(frame: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -60,13 +71,19 @@ def normalize_structure_frame(frame: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         frame = frame.to_crs("EPSG:4326")
     out = frame.copy()
     if "geometry_wkt" not in out.columns:
-        out["geometry_wkt"] = out.geometry.to_wkt()
+        out["geometry_wkt"] = out.geometry.to_wkt(rounding_precision=-1)
     validate_output(out)
     return out
 
 
-def normalize_ward_frame(wards: gpd.GeoDataFrame, *, ward_id_column: str = "ward_no") -> gpd.GeoDataFrame:
-    """Normalize wards to EPSG:4326 and reject missing, duplicate, or invalid wards."""
+def normalize_ward_frame(
+    wards: gpd.GeoDataFrame,
+    *,
+    ward_id_column: str = "ward_no",
+    expected_ward_count: int | None = None,
+    allow_overlaps: bool = False,
+) -> gpd.GeoDataFrame:
+    """Normalize wards and report polygon overlaps without hiding source defects."""
     if not isinstance(wards, gpd.GeoDataFrame):
         raise ExposureValidationError("Wards must be a GeoDataFrame")
     if ward_id_column not in wards.columns:
@@ -78,10 +95,10 @@ def normalize_ward_frame(wards: gpd.GeoDataFrame, *, ward_id_column: str = "ward
     if wards.crs.to_epsg() != 4326:
         wards = wards.to_crs("EPSG:4326")
     out = wards.copy()
-    out["ward_no"] = out[ward_id_column].astype(str).str.strip()
-    if out["ward_no"].eq("").any():
+    out[ward_id_column] = out[ward_id_column].astype(str).str.strip()
+    if out[ward_id_column].eq("").any():
         raise ExposureValidationError("Ward input has blank ward ids")
-    duplicate_count = int(out["ward_no"].duplicated().sum())
+    duplicate_count = int(out[ward_id_column].duplicated().sum())
     if duplicate_count:
         raise ExposureValidationError(f"Ward input has duplicate ward ids: {duplicate_count}")
     invalid_mask = out.geometry.notna() & ~out.geometry.is_empty & ~out.geometry.is_valid.fillna(False)
@@ -91,49 +108,106 @@ def normalize_ward_frame(wards: gpd.GeoDataFrame, *, ward_id_column: str = "ward
     invalid_count = int((out.geometry.isna() | out.geometry.is_empty | ~out.geometry.is_valid.fillna(False)).sum())
     if invalid_count:
         raise ExposureValidationError(f"Ward input has invalid/empty geometries: {invalid_count}")
-    normalized = out[["ward_no", "geometry"]].copy()
+    if expected_ward_count is not None and len(out) != expected_ward_count:
+        raise ExposureValidationError(f"Expected {expected_ward_count} wards, found {len(out)}")
+    normalized = out[[ward_id_column, "geometry"]].copy()
+    overlap = _ward_overlap_diagnostics(normalized, ward_id_column)
+    if overlap["overlap_pair_count"] and not allow_overlaps:
+        raise ExposureValidationError(
+            f"Ward polygons overlap in {overlap['overlap_pair_count']} pairs; "
+            "set allow_overlaps=True only when the source defect is documented"
+        )
     normalized.attrs["repaired_geometry_count"] = repaired_count
+    normalized.attrs["overlap_diagnostics"] = overlap
     return normalized
 
 
-def assign_structures_to_wards(structures: gpd.GeoDataFrame, wards: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, dict]:
-    """Assign each structure to exactly one ward using the structure representative point."""
-    assigned_rows = []
-    ambiguous: list[str] = []
-    unassigned: list[str] = []
-    spatial_index = wards.sindex
-    for _, row in structures.iterrows():
-        point = row.geometry.representative_point()
-        matches = []
-        for candidate_index in spatial_index.query(point, predicate="intersects"):
-            ward = wards.iloc[candidate_index]
-            if ward.geometry.intersects(point):
-                matches.append(str(ward["ward_no"]))
-        structure_id = str(row["StructureID"])
-        if len(matches) == 1:
-            payload = row.to_dict()
-            payload["ward_no"] = matches[0]
-            payload["ward_assignment_method"] = "representative_point_within_ward"
-            payload["ward_assignment_status"] = "assigned"
-            assigned_rows.append(payload)
-        elif len(matches) > 1:
-            ambiguous.append(structure_id)
+def assign_structures_to_wards(
+    structures: gpd.GeoDataFrame,
+    wards: gpd.GeoDataFrame,
+    *,
+    ward_id_column: str = "ward_no",
+    resolve_ambiguous_by_largest_overlap: bool = False,
+) -> tuple[gpd.GeoDataFrame, dict]:
+    """Assign structures by representative point, resolving only unique overlap winners."""
+    if ward_id_column not in wards:
+        raise ExposureValidationError(f"Ward frame is missing id column: {ward_id_column}")
+    source_indexes = list(structures.index)
+    points = gpd.GeoDataFrame(
+        {"_source_index": source_indexes, "StructureID": structures["StructureID"].astype(str).tolist()},
+        geometry=structures.geometry.representative_point().tolist(),
+        crs=structures.crs,
+    )
+    joined = gpd.sjoin(
+        points,
+        wards[[ward_id_column, "geometry"]],
+        how="left",
+        predicate="intersects",
+    )
+    joined[ward_id_column] = joined[ward_id_column].astype("string")
+    match_counts = joined.groupby("_source_index", sort=False)[ward_id_column].count()
+    direct_indices = match_counts[match_counts.eq(1)].index
+    ambiguous_indices = match_counts[match_counts.gt(1)].index
+    unassigned_indices = match_counts[match_counts.eq(0)].index
+    assignments: dict[Any, tuple[str, str, float | None]] = {}
+    direct = joined[joined["_source_index"].isin(direct_indices)].dropna(subset=[ward_id_column])
+    for _, row in direct.iterrows():
+        assignments[row["_source_index"]] = (
+            str(row[ward_id_column]),
+            "representative_point_intersects_ward",
+            None,
+        )
+
+    resolved_ids: list[str] = []
+    unresolved_ids: list[str] = []
+    if len(ambiguous_indices):
+        ambiguous_join = joined[joined["_source_index"].isin(ambiguous_indices)]
+        if resolve_ambiguous_by_largest_overlap:
+            projected_crs = wards.estimate_utm_crs() or "EPSG:3857"
+            projected_structures = structures.loc[ambiguous_indices].to_crs(projected_crs)
+            projected_wards = wards.to_crs(projected_crs)
+            ward_lookup = projected_wards.set_index(ward_id_column).geometry
+            for source_index, candidates in ambiguous_join.groupby("_source_index", sort=False):
+                footprint = projected_structures.loc[source_index].geometry
+                areas = [
+                    (str(ward_id), float(footprint.intersection(ward_lookup.loc[str(ward_id)]).area))
+                    for ward_id in candidates[ward_id_column].dropna().astype(str).unique()
+                ]
+                areas.sort(key=lambda item: item[1], reverse=True)
+                structure_id = str(structures.loc[source_index, "StructureID"])
+                if areas and (len(areas) == 1 or areas[0][1] > areas[1][1] + 1e-6):
+                    ratio = areas[0][1] / float(footprint.area) if footprint.area else None
+                    assignments[source_index] = (areas[0][0], "unique_largest_overlap", ratio)
+                    resolved_ids.append(structure_id)
+                else:
+                    unresolved_ids.append(structure_id)
         else:
-            unassigned.append(structure_id)
-    if assigned_rows:
-        assigned = gpd.GeoDataFrame(assigned_rows, geometry="geometry", crs=structures.crs)
+            unresolved_ids = structures.loc[ambiguous_indices, "StructureID"].astype(str).tolist()
+
+    assigned_indices = list(assignments)
+    assigned = structures.loc[assigned_indices].copy()
+    if assigned_indices:
+        assigned[ward_id_column] = [assignments[index][0] for index in assigned_indices]
+        assigned["ward_assignment_method"] = [assignments[index][1] for index in assigned_indices]
+        assigned["ward_assignment_overlap_ratio"] = [assignments[index][2] for index in assigned_indices]
+        assigned["ward_assignment_status"] = "assigned"
     else:
-        columns = list(structures.columns) + ["ward_no", "ward_assignment_method", "ward_assignment_status"]
-        assigned = gpd.GeoDataFrame(columns=columns, geometry="geometry", crs=structures.crs)
+        assigned[ward_id_column] = pd.Series(dtype="string")
+        assigned["ward_assignment_method"] = pd.Series(dtype="string")
+        assigned["ward_assignment_overlap_ratio"] = pd.Series(dtype="float64")
+        assigned["ward_assignment_status"] = pd.Series(dtype="string")
+    unassigned = structures.loc[unassigned_indices, "StructureID"].astype(str).tolist()
     return assigned, {
         "structure_count": int(len(structures)),
         "ward_count": int(len(wards)),
         "assigned_count": int(len(assigned)),
         "unassigned_count": int(len(unassigned)),
-        "ambiguous_count": int(len(ambiguous)),
-        "unassigned_structure_ids": unassigned,
-        "ambiguous_structure_ids": ambiguous,
-        "assignment_method": "structure_representative_point_to_ward_polygon",
+        "ambiguous_count": int(len(unresolved_ids)),
+        "resolved_ambiguity_count": int(len(resolved_ids)),
+        "unassigned_structure_ids": unassigned[:100],
+        "ambiguous_structure_ids": unresolved_ids[:100],
+        "resolved_ambiguity_structure_ids": resolved_ids[:100],
+        "assignment_method": "representative_point_then_unique_largest_overlap",
     }
 
 
@@ -143,14 +217,26 @@ def build_ward_structure_exposure(
     *,
     strict: bool = True,
     expected_ward_count: int | None = None,
+    ward_id_column: str = "ward_no",
+    allow_ward_overlaps: bool = False,
+    resolve_ambiguous_by_largest_overlap: bool = False,
 ) -> dict:
     """Build dashboard-ready ward-level structure exposure features without imputing values."""
     normalized_structures = normalize_structure_frame(structures)
-    normalized_wards = normalize_ward_frame(wards)
-    if expected_ward_count is not None and len(normalized_wards) != expected_ward_count:
-        raise ExposureValidationError(f"Expected {expected_ward_count} wards, found {len(normalized_wards)}")
-    assigned, assignment = assign_structures_to_wards(normalized_structures, normalized_wards)
+    normalized_wards = normalize_ward_frame(
+        wards,
+        ward_id_column=ward_id_column,
+        expected_ward_count=expected_ward_count,
+        allow_overlaps=allow_ward_overlaps,
+    )
+    assigned, assignment = assign_structures_to_wards(
+        normalized_structures,
+        normalized_wards,
+        ward_id_column=ward_id_column,
+        resolve_ambiguous_by_largest_overlap=resolve_ambiguous_by_largest_overlap,
+    )
     assignment["ward_geometry_repaired_count"] = int(normalized_wards.attrs.get("repaired_geometry_count", 0))
+    assignment["ward_overlap_diagnostics"] = normalized_wards.attrs.get("overlap_diagnostics", {})
     blockers = []
     if assignment["ambiguous_count"]:
         blockers.append("ambiguous_structure_ward_assignment")
@@ -158,12 +244,20 @@ def build_ward_structure_exposure(
         blockers.append("unassigned_structure_ward_assignment")
     if strict and blockers:
         raise ExposureValidationError(f"Structure exposure assignment failed strict gates: {blockers}")
-    assigned_by_ward = dict(tuple(assigned.groupby("ward_no", dropna=False))) if not assigned.empty else {}
+    assigned_by_ward = dict(tuple(assigned.groupby(ward_id_column, dropna=False))) if not assigned.empty else {}
     ward_features = []
-    sorted_wards = sorted(normalized_wards.to_dict("records"), key=lambda row: _ward_sort_key(str(row["ward_no"])))
+    sorted_wards = sorted(
+        normalized_wards.to_dict("records"),
+        key=lambda row: _ward_sort_key(str(row[ward_id_column])),
+    )
     for ward in sorted_wards:
         empty = assigned.iloc[0:0] if not assigned.empty else assigned
-        ward_features.append(_ward_feature(str(ward["ward_no"]), assigned_by_ward.get(str(ward["ward_no"]), empty)))
+        ward_features.append(
+            _ward_feature(
+                str(ward[ward_id_column]),
+                assigned_by_ward.get(str(ward[ward_id_column]), empty),
+            )
+        )
     metadata = {
         "feature_type": "structure_exposure",
         "feature_version": EXPOSURE_LAYER_VERSION,
@@ -181,6 +275,45 @@ def build_ward_structure_exposure(
         ],
     }
     return {"metadata": json_safe(metadata), "wards": json_safe(ward_features)}
+
+
+def _ward_overlap_diagnostics(wards: gpd.GeoDataFrame, ward_id_column: str) -> dict:
+    """Measure positive-area ward overlaps in a locally estimated projected CRS."""
+    projected = wards.to_crs(wards.estimate_utm_crs() or "EPSG:3857").reset_index(drop=True)
+    pairs = gpd.sjoin(
+        projected[[ward_id_column, "geometry"]],
+        projected[[ward_id_column, "geometry"]],
+        how="inner",
+        predicate="intersects",
+        lsuffix="left",
+        rsuffix="right",
+    )
+    pairs = pairs[pairs.index < pairs["index_right"]]
+    areas: list[float] = []
+    examples: list[dict[str, Any]] = []
+    for left_index, row in pairs.iterrows():
+        area = float(
+            projected.loc[left_index].geometry.intersection(
+                projected.loc[row["index_right"]].geometry
+            ).area
+        )
+        if area <= 1e-6:
+            continue
+        areas.append(area)
+        if len(examples) < 20:
+            examples.append(
+                {
+                    "left_ward": str(projected.loc[left_index, ward_id_column]),
+                    "right_ward": str(projected.loc[row["index_right"], ward_id_column]),
+                    "overlap_area_m2": area,
+                }
+            )
+    return {
+        "overlap_pair_count": len(areas),
+        "total_overlap_area_m2": float(sum(areas)),
+        "max_overlap_area_m2": float(max(areas, default=0.0)),
+        "examples": examples,
+    }
 
 
 def write_ward_structure_exposure(payload: dict, path: Path) -> Path:

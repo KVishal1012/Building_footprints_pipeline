@@ -34,6 +34,11 @@ DATABASE_TABLES = (
         description="Rows blocked by QA/provenance gates before canonical promotion.",
     ),
     DatabaseTable(
+        name="staging.promotion_candidates",
+        role="atomic_promotion_staging",
+        description="QA-approved rows held until one transaction finalizes the city refresh.",
+    ),
+    DatabaseTable(
         name="public.structures",
         role="canonical_source_of_truth",
         description="Approved canonical structure database exposed through Supabase APIs.",
