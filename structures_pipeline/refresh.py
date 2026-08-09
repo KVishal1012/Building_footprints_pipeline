@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 import time
 import uuid
 from copy import deepcopy
@@ -15,7 +16,16 @@ import shapely
 from shapely import wkt
 
 from structures_pipeline.config import PipelineConfig
+from structures_pipeline.constants import REQUIRED_OUTPUT_COLUMNS
 from structures_pipeline.coverage import build_gap_registry
+from structures_pipeline.foundation import (
+    build_observation_rows,
+    build_source_object_row,
+    compact_field_deltas,
+    observation_to_canonical,
+    stable_checksum,
+)
+from structures_pipeline.passport import ai_suggestion_rows_from_canonical
 from structures_pipeline.release import build_release_manifest
 from structures_pipeline.utils import json_safe, utc_now_iso
 from structures_pipeline.validation import validate_output
@@ -24,6 +34,9 @@ CHANGE_TYPES = {"insert", "update", "delete_candidate", "unchanged"}
 RAW_REQUIRED_FIELDS = [
     "raw_record_id",
     "source_run_id",
+    "source_object_id",
+    "structure_id",
+    "record_checksum",
     "raw_data_source",
     "source_authority",
     "source_family",
@@ -31,7 +44,6 @@ RAW_REQUIRED_FIELDS = [
     "city",
     "state",
     "geometry_wkt",
-    "raw_payload",
     "loaded_at",
     "data_refresh_timestamp",
 ]
@@ -72,6 +84,8 @@ CANONICAL_TO_DB_COLUMNS = {
     "SourceFamily": "source_family",
     "ProvenanceTier": "provenance_tier",
     "source_run_id": "source_run_id",
+    "record_checksum": "record_checksum",
+    "qa_status": "qa_status",
 }
 DB_TO_CANONICAL_COLUMNS = {value: key for key, value in CANONICAL_TO_DB_COLUMNS.items()}
 
@@ -96,12 +110,17 @@ def _json_ready(value):
 @dataclass
 class InMemoryRefreshStore:
     source_runs: dict[str, dict] = field(default_factory=dict)
+    source_objects: dict[str, dict] = field(default_factory=dict)
     raw_structures: list[dict] = field(default_factory=list)
     change_log: list[dict] = field(default_factory=list)
     promotion_failures: list[dict] = field(default_factory=list)
     canonical_structures: dict[str, dict] = field(default_factory=dict)
     coverage_registry: dict[tuple[str, str], dict] = field(default_factory=dict)
     release_manifests: dict[str, dict] = field(default_factory=dict)
+
+    def upsert_source_object(self, row: dict) -> None:
+        """Persist one immutable source-object reference for local workflow tests."""
+        self.source_objects[row["source_object_id"]] = deepcopy(row)
 
     # Persist or replace one source run metadata row.
     def upsert_source_run(self, row: dict) -> None:
@@ -172,6 +191,18 @@ class InMemoryRefreshStore:
 class SupabaseRefreshStore:
     """Persist refresh workflow rows through Supabase's PostgREST API."""
 
+    _PAGE_KEYS = {
+        "source_objects_table": ("source_object_id",),
+        "source_runs_table": ("source_run_id",),
+        "raw_table": ("raw_record_id",),
+        "change_log_table": ("change_id",),
+        "promotion_failures_table": ("failure_id",),
+        "promotion_batches_table": ("source_run_id", "batch_number"),
+        "canonical_table": ("structure_id",),
+        "coverage_table": ("city", "state"),
+        "release_table": ("release_id",),
+    }
+
     def __init__(
         self,
         config: PipelineConfig,
@@ -200,10 +231,13 @@ class SupabaseRefreshStore:
         """Build auth and schema headers for one PostgREST request."""
         headers = {
             "apikey": self.service_key,
-            "Authorization": f"Bearer {self.service_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        # Modern Supabase secret keys authenticate through the apikey header and
+        # are not JWTs. Legacy service_role keys remain valid Bearer tokens.
+        if not self.service_key.startswith("sb_secret_"):
+            headers["Authorization"] = f"Bearer {self.service_key}"
         profile = "Content-Profile" if write else "Accept-Profile"
         headers[profile] = schema
         return headers
@@ -259,6 +293,28 @@ class SupabaseRefreshStore:
         except ValueError:
             return None
 
+    def _rpc(self, function_name: str, payload: dict, *, schema: str = "public"):
+        """Call one schema-scoped PostgREST RPC with service-role credentials."""
+        headers = self._headers(schema, write=True)
+        response = self.session.request(
+            "POST",
+            f"{self.supabase_url}/rest/v1/rpc/{function_name}",
+            headers={**headers, "Prefer": "return=representation"},
+            json=_json_ready(payload),
+            timeout=int(self.config.request_timeout_sec),
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"Supabase RPC {schema}.{function_name} failed: "
+                f"{response.status_code} {response.text}"
+            )
+        if not response.text:
+            return None
+        try:
+            return response.json()
+        except ValueError:
+            return None
+
     def _write_batches(
         self,
         config_key: str,
@@ -278,34 +334,101 @@ class SupabaseRefreshStore:
             self._request("POST", config_key, payload=batch, upsert_key=upsert_key)
 
     def _paged_get(self, config_key: str, *, params: dict | None = None) -> list[dict]:
-        """Read all PostgREST pages with deterministic limit/offset pagination."""
+        """Read all PostgREST pages in stable key order, using a cursor when possible."""
         page_size = max(1, int(self.config.supabase_page_size))
         offset = 0
+        cursor: str | None = None
         rows: list[dict] = []
+        page_keys = self._PAGE_KEYS[config_key]
+        order = ",".join(f"{key}.asc" for key in page_keys)
         while True:
-            page_params = {**dict(params or {}), "limit": page_size, "offset": offset}
+            page_params = {
+                **dict(params or {}),
+                "order": order,
+                "limit": page_size,
+            }
+            if len(page_keys) == 1 and cursor is not None:
+                page_params[page_keys[0]] = f"gt.{cursor}"
+            elif len(page_keys) > 1:
+                page_params["offset"] = offset
             page = self._request("GET", config_key, params=page_params) or []
             rows.extend(page)
             if len(page) < page_size:
                 return rows
-            offset += page_size
+            if len(page_keys) == 1:
+                next_cursor = _present_text(page[-1].get(page_keys[0]))
+                if next_cursor is None or next_cursor == cursor:
+                    raise RuntimeError(
+                        f"Supabase pagination did not advance for {config_key}"
+                    )
+                cursor = next_cursor
+            else:
+                offset += page_size
 
     def preflight(self) -> dict:
         """Verify every required PostgREST table is reachable before mutating a run."""
         checked = []
         for config_key in (
+            "source_objects_table",
             "source_runs_table",
             "raw_table",
             "change_log_table",
             "promotion_failures_table",
-            "promotion_candidates_table",
+            "promotion_batches_table",
             "canonical_table",
             "coverage_table",
             "release_table",
+            "conflicts_table",
+            "quality_issues_table",
+            "relationships_table",
+            "ai_suggestions_table",
         ):
             self._request("GET", config_key, params={"select": "*", "limit": 1})
             checked.append(self.config.canonical_database[config_key])
         return {"status": "passed", "tables": checked}
+
+    def upsert_source_object(self, row: dict) -> None:
+        """Register a checksummed immutable source object before row staging."""
+        row = deepcopy(row)
+        if self.config.refresh_require_archive and self.config.refresh_verify_archive:
+            self._verify_source_object(row)
+        self._request(
+            "POST",
+            "source_objects_table",
+            payload=row,
+            upsert_key="source_object_id",
+        )
+
+    def _verify_source_object(self, row: dict) -> None:
+        """Stream a private Storage object and reject missing or altered archives."""
+        bucket = row["bucket_id"]
+        object_path = str(row["object_path"]).lstrip("/")
+        headers = {
+            "apikey": self.service_key,
+            "Accept": "application/octet-stream",
+        }
+        if not self.service_key.startswith("sb_secret_"):
+            headers["Authorization"] = f"Bearer {self.service_key}"
+        response = self.session.request(
+            "GET",
+            f"{self.supabase_url}/storage/v1/object/authenticated/{bucket}/{object_path}",
+            headers=headers,
+            stream=True,
+            timeout=int(self.config.request_timeout_sec),
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"Supabase source archive verification failed: "
+                f"{response.status_code} {response.text}"
+            )
+        digest = hashlib.sha256()
+        for chunk in response.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                digest.update(chunk)
+        if digest.hexdigest() != row["checksum_sha256"]:
+            raise ValueError("Supabase source archive checksum does not match local source")
+        row["archive_status"] = "verified"
+        row["verified_at"] = utc_now_iso()
 
     # Persist or replace one source run metadata row.
     def upsert_source_run(self, row: dict) -> None:
@@ -314,8 +437,16 @@ class SupabaseRefreshStore:
 
     # Append staged raw rows for a source run.
     def insert_raw_rows(self, rows: Iterable[dict]) -> None:
-        """Append staged raw rows for a source run."""
-        self._write_batches("raw_table", rows, upsert_key="source_run_id,raw_record_id")
+        """Stage normalized rows through an RPC that converts transient WKT to PostGIS."""
+        batch_size = max(1, int(self.config.supabase_batch_size))
+        batch: list[dict] = []
+        for row in rows:
+            batch.append(row)
+            if len(batch) >= batch_size:
+                self._rpc("stage_structure_observations", {"p_rows": batch}, schema="staging")
+                batch = []
+        if batch:
+            self._rpc("stage_structure_observations", {"p_rows": batch}, schema="staging")
 
     # Return raw rows staged for one source run.
     def raw_rows_for_run(self, source_run_id: str) -> list[dict]:
@@ -385,50 +516,77 @@ class SupabaseRefreshStore:
         }
         self._request("POST", "release_table", payload=row, upsert_key="release_id")
 
-    def stage_promotion_candidates(self, source_run_id: str, rows: Iterable[dict]) -> None:
-        """Stage QA-approved canonical rows for one atomic database finalization."""
-        payloads = (
+    def promote_canonical_batches(self, source_run_id: str, rows: Iterable[dict]) -> int:
+        """Promote canonical rows in bounded, idempotent database transactions."""
+        batch_size = max(1, int(self.config.promotion_batch_size))
+        promoted = 0
+        batch: list[dict] = []
+        batch_number = 0
+        for row in rows:
+            batch.append(canonical_row_to_db(row))
+            if len(batch) >= batch_size:
+                promoted += self._promote_batch(source_run_id, batch_number, batch)
+                batch_number += 1
+                batch = []
+        if batch:
+            promoted += self._promote_batch(source_run_id, batch_number, batch)
+        return promoted
+
+    def _promote_batch(self, source_run_id: str, batch_number: int, batch: list[dict]) -> int:
+        """Call the transactional promotion RPC for one deterministic payload batch."""
+        batch_hash = stable_checksum({"source_run_id": source_run_id, "rows": batch})
+        result = self._rpc(
+            "promote_structure_batch_v3",
             {
-                "source_run_id": source_run_id,
-                "structure_id": row["StructureID"],
-                "canonical_payload": canonical_row_to_db(row),
-            }
-            for row in rows
+                "p_source_run_id": source_run_id,
+                "p_batch_number": batch_number,
+                "p_batch_hash": batch_hash,
+                "p_rows": batch,
+            },
         )
-        self._write_batches(
-            "promotion_candidates_table",
-            payloads,
-            upsert_key="source_run_id,structure_id",
+        if isinstance(result, int):
+            return result
+        return len(batch)
+
+    def upsert_ai_suggestions(self, rows: Iterable[dict]) -> None:
+        """Persist suggest-only model output outside the canonical structure row."""
+        self._write_batches("ai_suggestions_table", rows)
+
+    def finalize_refresh(
+        self,
+        source_run_id: str,
+        coverage_rows: list[dict],
+        manifest: dict,
+        *,
+        expected_promoted_count: int = 0,
+    ) -> None:
+        """Finalize metadata only after all bounded promotion batches complete."""
+        manifest = deepcopy(manifest)
+        manifest["promotion_contract"] = {
+            "mode": "bounded_transactional_batches",
+            "expected_promoted_count": expected_promoted_count,
+        }
+        self._rpc(
+            "finalize_structure_refresh_v3",
+            {
+                "p_source_run_id": source_run_id,
+                "p_expected_promoted_count": expected_promoted_count,
+                "p_coverage_rows": [
+                    coverage_row_to_db(row) for row in coverage_rows
+                ],
+                "p_release_manifest": {
+                    "release_id": manifest["release_id"],
+                    "generated_at": manifest.get("generated_at"),
+                    "schema_version": manifest.get("schema_version", "3.0"),
+                    "row_count": int(manifest.get("row_count") or 0),
+                    "manifest": manifest,
+                },
+            },
         )
 
-    def finalize_refresh(self, source_run_id: str, coverage_rows: list[dict], manifest: dict) -> None:
-        """Atomically promote staged candidates and write registry/release metadata."""
-        schema, _ = self._table_parts("canonical_table")
-        headers = self._headers(schema, write=True)
-        response = self.session.request(
-            "POST",
-            f"{self.supabase_url}/rest/v1/rpc/finalize_structure_refresh",
-            headers={**headers, "Prefer": "return=minimal"},
-            json=_json_ready(
-                {
-                    "p_source_run_id": source_run_id,
-                    "p_coverage_rows": [coverage_row_to_db(row) for row in coverage_rows],
-                    "p_release_manifest": {
-                        "release_id": manifest["release_id"],
-                        "generated_at": manifest.get("generated_at"),
-                        "schema_version": manifest.get("schema_version", "2.0"),
-                        "row_count": int(manifest.get("row_count") or 0),
-                        "manifest": manifest,
-                    },
-                }
-            ),
-            timeout=int(self.config.request_timeout_sec),
-        )
-        if response.status_code >= 400:
-            raise RuntimeError(
-                "Supabase RPC public.finalize_structure_refresh failed: "
-                f"{response.status_code} {response.text}"
-            )
+    def structure_passport(self, structure_id: str) -> dict | None:
+        """Fetch the database-built Structure Passport for one canonical structure."""
+        return self._rpc("get_structure_passport", {"p_structure_id": structure_id})
 
 
 # Convert a canonical pipeline row into the public.structures database shape.
@@ -459,14 +617,9 @@ def canonical_row_to_db(row: dict) -> dict:
             "confidence": db_row.get("occupant_count_confidence"),
         },
     }
-    db_row["ai_suggestions"] = {
-        "structure_type": _json_ready(row.get("PredictedStructureType")),
-        "num_units": _json_ready(row.get("PredictedNumUnits")),
-        "num_stories": _json_ready(row.get("PredictedNumStories")),
-        "occupant_count": _json_ready(row.get("PredictedOccupantCount")),
-        "prediction_kind": _json_ready(row.get("PredictionKind")),
-        "confidence": _json_ready(row.get("PredictionConfidence")),
-    }
+    # Kept only for legacy schema compatibility. AI output is stored in the
+    # dedicated suggestions table and never inside the canonical record.
+    db_row["ai_suggestions"] = {}
     return db_row
 
 
@@ -474,6 +627,10 @@ def canonical_row_to_db(row: dict) -> dict:
 def canonical_row_from_db(row: dict) -> dict:
     """Convert a public.structures database row back into the canonical pipeline shape."""
     converted = {canonical_key: row.get(db_key) for db_key, canonical_key in DB_TO_CANONICAL_COLUMNS.items()}
+    if converted.get("geometry_wkt") is None and isinstance(row.get("geom"), dict):
+        from shapely.geometry import shape
+
+        converted["geometry_wkt"] = shape(row["geom"]).wkt
     return {**row, **converted}
 
 
@@ -562,6 +719,7 @@ def build_source_run_row(
         "metadata": json_safe(metadata or {"city": city, "state": state}),
         "city": city,
         "state": state,
+        "source_object_id": config.refresh_source_object_id,
     }
 
 
@@ -602,37 +760,10 @@ def build_raw_structure_rows(
     source_run: dict,
     config: PipelineConfig,
 ) -> list[dict]:
-    """Convert source rows into staging.raw_structures-compatible dictionaries."""
-    if source_frame.empty:
-        return []
-    frame = source_frame.to_crs(epsg=4326) if source_frame.crs and source_frame.crs.to_epsg() != 4326 else source_frame
-    rows: list[dict] = []
-    loaded_at = utc_now_iso()
-    geometry_values = frame.geometry.to_wkt(rounding_precision=-1)
-    for position, (index, row) in enumerate(frame.iterrows()):
-        geom = row.geometry
-        geometry_wkt = geometry_values.iloc[position] if geom is not None else None
-        payload = _row_payload(row, geometry_wkt or "")
-        fallback_id = f"{source_run['source_run_id']}_{index}"
-        canonical_id = canonical_structure_id(payload, fallback_id)
-        raw_record_id = str(payload.get("raw_record_id") or payload.get("RawRecordID") or canonical_id)
-        rows.append(
-            {
-                "raw_record_id": raw_record_id,
-                "source_run_id": source_run["source_run_id"],
-                "raw_data_source": str(payload.get("RawDataSource") or source_run["source_name"]),
-                "source_authority": str(payload.get("SourceAuthority") or source_run["source_name"]),
-                "source_family": str(payload.get("SourceFamily") or source_run["source_family"]),
-                "source_as_of": str(payload.get("source_as_of") or source_run["source_as_of"]),
-                "city": str(payload.get("City") or config.refresh_city or ""),
-                "state": str(payload.get("State") or config.refresh_state or ""),
-                "geometry_wkt": geometry_wkt,
-                "raw_payload": payload,
-                "loaded_at": loaded_at,
-                "data_refresh_timestamp": source_run["data_refresh_timestamp"],
-            }
-        )
-    return rows
+    """Convert source rows into normalized observations without copying raw payloads."""
+    source_object = build_source_object_row(config, source_run)
+    source_run["source_object_id"] = source_object["source_object_id"]
+    return build_observation_rows(source_frame, source_run, source_object, config)
 
 
 # Validate raw staging rows before delta detection.
@@ -661,9 +792,12 @@ def run_source_refresh(
     if config.refresh_require_nonempty and source_frame.empty:
         raise ValueError("Source refresh input is empty")
     source_run = build_source_run_row(source_name, city, state, config, row_count=len(source_frame))
+    source_object = build_source_object_row(config, source_run)
+    source_run["source_object_id"] = source_object["source_object_id"]
     raw_rows = build_raw_structure_rows(source_frame, source_run, config)
     validate_raw_rows(raw_rows)
     if not config.dry_run:
+        store.upsert_source_object(source_object)
         store.upsert_source_run(source_run)
         store.insert_raw_rows(raw_rows)
     return {"source_run": source_run, "raw_rows": raw_rows, "store": store}
@@ -683,7 +817,7 @@ def _spatial_match(raw_row: dict, canonical_row: dict, tolerance: float = 0.0000
 # Find the canonical record that matches a staged raw row.
 def match_canonical_row(raw_row: dict, canonical_rows: list[dict]) -> dict | None:
     """Find the canonical record that matches a staged raw row."""
-    payload = raw_row["raw_payload"]
+    payload = observation_to_canonical(raw_row)
     preferred_ids = [
         payload.get("StructureID"),
         payload.get("structure_id"),
@@ -711,27 +845,7 @@ def match_canonical_row(raw_row: dict, canonical_rows: list[dict]) -> dict | Non
 # Return changed fields between staged raw payload and canonical record.
 def changed_fields(raw_payload: dict, canonical_row: dict) -> list[str]:
     """Return changed fields between staged raw payload and canonical record."""
-    compare_fields = [
-        "StructureType",
-        "NumUnits",
-        "NumStories",
-        "FootprintArea_m2",
-        "FootprintArea_sqft",
-        "OccupantCount",
-        "RawDataSource",
-        "FootprintSource",
-        "CoverageTier",
-        "geometry_wkt",
-    ]
-    changed: list[str] = []
-    for field in compare_fields:
-        raw_value = raw_payload.get(field)
-        canonical_value = canonical_row.get(field)
-        if raw_value is None and canonical_value is None:
-            continue
-        if str(raw_value) != str(canonical_value):
-            changed.append(field)
-    return changed
+    return list(compact_field_deltas(raw_payload, canonical_row))
 
 
 # Build one staging.change_log row.
@@ -739,17 +853,27 @@ def build_change_row(source_run_id: str, change_type: str, raw_row: dict | None,
     """Build one staging.change_log row."""
     if change_type not in CHANGE_TYPES:
         raise ValueError(f"Unsupported change type: {change_type}")
-    raw_payload = raw_row["raw_payload"] if raw_row else {}
+    raw_payload = observation_to_canonical(raw_row) if raw_row else {}
     structure_id = canonical_structure_id(raw_payload, "") or (canonical_row or {}).get("StructureID")
-    fields = changed_fields(raw_payload, canonical_row or {}) if raw_row and canonical_row else []
+    deltas = compact_field_deltas(raw_payload, canonical_row) if raw_row else {}
+    if change_type == "insert":
+        deltas = {
+            field: {"before": None, "after": raw_payload.get(field)}
+            for field in ("StructureID", "geometry_wkt", "RawDataSource")
+        }
     return {
         "change_id": str(uuid.uuid4()),
         "structure_id": structure_id,
         "source_run_id": source_run_id,
         "change_type": change_type,
-        "changed_fields": fields,
-        "before_payload": json_safe(canonical_row),
-        "after_payload": json_safe(raw_payload),
+        "raw_record_id": (raw_row or {}).get("raw_record_id"),
+        "city": (raw_row or {}).get("city") or (canonical_row or {}).get("City"),
+        "state": (raw_row or {}).get("state") or (canonical_row or {}).get("State"),
+        "changed_fields": list(deltas),
+        "field_deltas": json_safe(deltas),
+        "before_checksum": (canonical_row or {}).get("record_checksum"),
+        "after_checksum": (raw_row or {}).get("record_checksum"),
+        "geometry_changed": "geometry_wkt" in deltas,
         "detected_at": utc_now_iso(),
         "data_refresh_timestamp": (raw_row or {}).get("data_refresh_timestamp"),
     }
@@ -761,9 +885,10 @@ def detect_structure_changes(
     config: PipelineConfig,
     *,
     store: InMemoryRefreshStore,
+    raw_rows: list[dict] | None = None,
 ) -> dict:
     """Compare staged rows to canonical records and write change-log rows."""
-    raw_rows = store.raw_rows_for_run(source_run_id)
+    raw_rows = raw_rows if raw_rows is not None else store.raw_rows_for_run(source_run_id)
     raw_source_names = {str(row.get("raw_data_source")) for row in raw_rows}
     canonical_rows = store.canonical_rows(city=config.refresh_city, state=config.refresh_state)
     source_runs = getattr(store, "source_runs", {})
@@ -778,7 +903,7 @@ def detect_structure_changes(
             if value is not None:
                 canonical_by_id.setdefault(value, canonical_row)
     for raw_row in raw_rows:
-        payload = raw_row["raw_payload"]
+        payload = observation_to_canonical(raw_row)
         canonical_row = next(
             (
                 canonical_by_id[value]
@@ -799,7 +924,7 @@ def detect_structure_changes(
             changes.append(build_change_row(source_run_id, "insert", raw_row, None))
             continue
         matched_ids.add(str(canonical_row.get("StructureID")))
-        fields = changed_fields(raw_row["raw_payload"], canonical_row)
+        fields = changed_fields(payload, canonical_row)
         changes.append(build_change_row(source_run_id, "update" if fields else "unchanged", raw_row, canonical_row))
     raw_city_state = {(row["city"], row["state"]) for row in raw_rows}
     for canonical_row in canonical_rows:
@@ -817,14 +942,27 @@ def detect_structure_changes(
 
 
 # Convert approved change rows into canonical structure records.
-def canonical_rows_from_changes(changes: list[dict], config: PipelineConfig) -> list[dict]:
+def canonical_rows_from_changes(
+    changes: list[dict],
+    config: PipelineConfig,
+    observations: list[dict] | None = None,
+) -> list[dict]:
     """Convert approved change rows into canonical structure records."""
     now = utc_now_iso()
     rows: list[dict] = []
+    observation_by_record = {
+        row.get("raw_record_id"): row for row in (observations or [])
+    }
     for change in changes:
         if change["change_type"] not in {"insert", "update"}:
             continue
-        payload = deepcopy(change["after_payload"])
+        observation = observation_by_record.get(change.get("raw_record_id"))
+        if observation is None:
+            raise ValueError(
+                "Canonical promotion requires normalized observations; "
+                f"missing {change.get('raw_record_id')}"
+            )
+        payload = observation_to_canonical(observation)
         payload["StructureID"] = canonical_structure_id(payload, change["structure_id"])
         payload["updated_at"] = now
         payload.setdefault("created_at", now)
@@ -834,6 +972,8 @@ def canonical_rows_from_changes(changes: list[dict], config: PipelineConfig) -> 
         payload["last_refreshed"] = config.refresh_metadata.get("last_refreshed") or data_refresh_timestamp
         payload["source_as_of"] = config.refresh_source_as_of or config.refresh_metadata.get("source_as_of") or config.source_version
         payload["source_run_id"] = change["source_run_id"]
+        payload["record_checksum"] = observation.get("record_checksum")
+        payload["qa_status"] = "passed"
         payload["SourceAuthority"] = payload.get("SourceAuthority") or config.refresh_metadata.get("source_authority")
         payload["SourceFamily"] = payload.get("SourceFamily") or config.refresh_source_family
         payload["ProvenanceTier"] = payload.get("ProvenanceTier") or config.refresh_metadata.get("provenance_tier")
@@ -850,6 +990,9 @@ def canonical_rows_from_changes(changes: list[dict], config: PipelineConfig) -> 
             }
         )
         payload["change_log"] = log
+        for column in REQUIRED_OUTPUT_COLUMNS:
+            if column != "geometry":
+                payload.setdefault(column, pd.NA)
         rows.append(payload)
     return rows
 
@@ -863,10 +1006,26 @@ def qa_valid_canonical_rows(rows: list[dict]) -> tuple[gpd.GeoDataFrame, list[di
     geometries = shapely.from_wkt(geometry_text, on_invalid="ignore")
     payloads = [{key: value for key, value in row.items() if key != "geometry_wkt"} for row in rows]
     batch = gpd.GeoDataFrame(payloads, geometry=geometries, crs="EPSG:4326")
+    duplicate_mask = batch["StructureID"].duplicated(keep=False)
+    if duplicate_mask.any():
+        duplicate_count = int(duplicate_mask.sum())
+        failed = [
+            {
+                "StructureID": rows[index].get("StructureID"),
+                "reason": f"Output contains a duplicated StructureID ({duplicate_count} affected rows)",
+                "row": json_safe(rows[index]),
+            }
+            for index in duplicate_mask[duplicate_mask].index
+        ]
+        batch = batch.loc[~duplicate_mask].reset_index(drop=True)
+        rows = [row for index, row in enumerate(rows) if not duplicate_mask.iloc[index]]
+        if batch.empty:
+            return batch, failed
+    else:
+        failed = []
     try:
         validate_output(batch)
     except Exception as exc:
-        failed: list[dict] = []
         valid_indexes: list[int] = []
         for index, row in enumerate(rows):
             try:
@@ -896,7 +1055,7 @@ def qa_valid_canonical_rows(rows: list[dict]) -> tuple[gpd.GeoDataFrame, list[di
                 for row in rows
             ]
         return valid, failed
-    return batch, []
+    return batch, failed
 
 
 # Promote valid insert/update changes into the canonical structure store.
@@ -905,10 +1064,13 @@ def promote_valid_changes(
     config: PipelineConfig,
     *,
     store: InMemoryRefreshStore,
+    observations: list[dict] | None = None,
+    changes: list[dict] | None = None,
 ) -> dict:
     """Promote valid insert/update changes into the canonical structure store."""
-    changes = store.changes_for_run(source_run_id)
-    candidate_rows = canonical_rows_from_changes(changes, config)
+    changes = changes if changes is not None else store.changes_for_run(source_run_id)
+    observations = observations if observations is not None else store.raw_rows_for_run(source_run_id)
+    candidate_rows = canonical_rows_from_changes(changes, config, observations)
     valid_gdf, failed_rows = qa_valid_canonical_rows(candidate_rows)
     promoted_rows = []
     if not valid_gdf.empty:
@@ -918,7 +1080,14 @@ def promote_valid_changes(
             row["geometry_wkt"] = geometry_wkt[index]
     if config.promote_to_canonical and not config.dry_run and promoted_rows:
         if isinstance(store, SupabaseRefreshStore):
-            store.stage_promotion_candidates(source_run_id, promoted_rows)
+            store.promote_canonical_batches(source_run_id, promoted_rows)
+            suggestions = [
+                suggestion
+                for row in promoted_rows
+                for suggestion in ai_suggestion_rows_from_canonical(row)
+            ]
+            if suggestions:
+                store.upsert_ai_suggestions(suggestions)
         else:
             store.upsert_canonical_rows(promoted_rows)
             registry = build_gap_registry(valid_gdf, config)
@@ -930,8 +1099,8 @@ def promote_valid_changes(
                 "failure_id": str(uuid.uuid4()),
                 "source_run_id": source_run_id,
                 "structure_id": row.get("StructureID"),
+                "source_record_id": row.get("raw_record_id"),
                 "reason": row["reason"],
-                "failed_payload": row["row"],
                 "detected_at": utc_now_iso(),
                 "data_refresh_timestamp": config.data_refresh_timestamp or utc_now_iso(),
             }
@@ -955,10 +1124,26 @@ def run_refresh_cycle(
     *,
     source_frame: gpd.GeoDataFrame | None = None,
     store: InMemoryRefreshStore | None = None,
+    resume_staged: bool = False,
 ) -> dict:
     """Run staging, change detection, promotion, coverage, and release metadata as one cycle."""
     store = store or InMemoryRefreshStore()
-    refresh = run_source_refresh(source_name, city, state, config, source_frame=source_frame, store=store)
+    if resume_staged:
+        if not config.refresh_source_run_id:
+            raise ValueError("Resuming a staged refresh requires config.refresh_source_run_id")
+        staged_rows = store.raw_rows_for_run(config.refresh_source_run_id)
+        if not staged_rows:
+            raise ValueError(f"No staged raw rows found for {config.refresh_source_run_id}")
+        source_run = build_source_run_row(source_name, city, state, config, row_count=len(staged_rows))
+        source_run["metadata"] = {
+            **dict(source_run.get("metadata") or {}),
+            "resumed_from_staging": True,
+        }
+        if not config.dry_run:
+            store.upsert_source_run(source_run)
+        refresh = {"source_run": source_run, "raw_rows": staged_rows, "store": store}
+    else:
+        refresh = run_source_refresh(source_name, city, state, config, source_frame=source_frame, store=store)
     source_run_id = refresh["source_run"]["source_run_id"]
     config.data_refresh_timestamp = refresh["source_run"]["data_refresh_timestamp"]
     working_store = store
@@ -973,10 +1158,25 @@ def run_refresh_cycle(
         )
         working_store.upsert_source_run(refresh["source_run"])
         working_store.insert_raw_rows(refresh["raw_rows"])
-    changes = detect_structure_changes(source_run_id, config, store=working_store)
+    existing_changes = working_store.changes_for_run(source_run_id) if resume_staged else []
+    if existing_changes:
+        changes = {"source_run_id": source_run_id, "changes": existing_changes}
+    else:
+        changes = detect_structure_changes(
+            source_run_id,
+            config,
+            store=working_store,
+            raw_rows=refresh["raw_rows"] if resume_staged else None,
+        )
     if config.dry_run:
         working_store.insert_change_rows(changes["changes"])
-    promotion = promote_valid_changes(source_run_id, config, store=working_store)
+    promotion = promote_valid_changes(
+        source_run_id,
+        config,
+        store=working_store,
+        observations=refresh["raw_rows"],
+        changes=changes["changes"],
+    )
     source_run = refresh["source_run"]
     source_run["completed_at"] = utc_now_iso()
     source_run["status"] = "completed" if promotion["failed_count"] == 0 else "completed_with_failures"
@@ -1009,7 +1209,12 @@ def run_refresh_cycle(
         if isinstance(store, SupabaseRefreshStore) and config.promote_to_canonical:
             coverage = build_gap_registry(canonical_gdf, config)
             coverage["data_refresh_timestamp"] = config.data_refresh_timestamp or utc_now_iso()
-            store.finalize_refresh(source_run_id, coverage.to_dict("records"), manifest)
+            store.finalize_refresh(
+                source_run_id,
+                coverage.to_dict("records"),
+                manifest,
+                expected_promoted_count=promotion["promoted_count"],
+            )
         else:
             store.upsert_release_manifest(manifest)
     raw_result = refresh["raw_rows"]

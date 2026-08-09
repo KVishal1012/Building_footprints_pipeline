@@ -70,9 +70,18 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/run_chennai_supabase_refresh.py
 ```
 
 Run `migrations/001_supabase_refresh_schema.sql` and
-`migrations/002_chennai_refresh_lifecycle.sql` in a dedicated Chennai Supabase
-project before remote promotion. Full gates and operator settings are documented in
+`migrations/002_chennai_refresh_lifecycle.sql`, followed by
+`migrations/003_compact_structure_foundation_and_passports.sql`, in a dedicated
+Chennai Supabase project before remote promotion. New runs require a checksummed
+source file in private object storage and use PostGIS-native observations, compact
+field deltas, bounded promotion transactions, and partitioned history. Full gates
+and operator settings are documented in
 [docs/chennai_supabase_lifecycle.md](docs/chennai_supabase_lifecycle.md).
+
+Each canonical structure can be inspected through the
+[Structure Passport](docs/structure_passport.md), which keeps authoritative values,
+source conflicts, QA warnings, relationships, geometry history, and AI suggestions
+in clearly separated sections.
 
 Current Tamil Nadu expansion order:
 

@@ -53,6 +53,7 @@ Run these files in order in the dedicated Chennai Supabase project:
 ```text
 migrations/001_supabase_refresh_schema.sql
 migrations/002_chennai_refresh_lifecycle.sql
+migrations/003_compact_structure_foundation_and_passports.sql
 ```
 
 In **Project Settings > Data API**, expose `public` and `staging`. The migration
@@ -60,15 +61,21 @@ explicitly grants the backend `service_role`, revokes `anon` and `authenticated`
 and enables RLS on all lifecycle tables. Do not place the service role key in a
 browser or committed file.
 
-The second migration adds:
+The third migration supersedes the JSON-heavy staging path for new runs and adds:
 
-- composite raw snapshot identity: `(source_run_id, raw_record_id)`
-- provenance and source-run columns on `public.structures`
-- QA constraints for source-only attributes and AI separation
-- bounded-promotion staging in `staging.promotion_candidates`
-- `public.finalize_structure_refresh(...)` as a service-role-only,
-  `SECURITY INVOKER` transaction
-- city/source indexes and RLS/grant hardening
+- private object-storage archive registration and checksum verification
+- normalized `staging.structure_observations` with native PostGIS geometry
+- compact field-level deltas in `staging.structure_changes`
+- GiST indexes for spatial intersection and proximity queries
+- bounded, idempotent `public.promote_structure_batch_v3(...)` transactions
+- hash-partitioned geometry and attribute history
+- archive-gated retention policies
+- Structure Passport conflicts, QA, AI, and relationship tables
+- `public.get_structure_passport(...)`
+
+Create the private `structure-source-archives` bucket through the Supabase Storage
+API or dashboard. The SQL migration intentionally does not modify the internal
+`storage` schema.
 
 ## Dry Run
 
@@ -98,18 +105,23 @@ SUPABASE_URL = "https://PROJECT_REF.supabase.co"
 SUPABASE_STORE = "supabase"
 DRY_RUN = False
 PROMOTE_TO_CANONICAL = True
+REQUIRE_SOURCE_ARCHIVE = True
+SOURCE_OBJECT_URI = "supabase://structure-source-archives/chennai/osm/buildings.geojson"
 ```
 
-Export the credential in the process environment, then run the same lifecycle
-command. The runner:
+Upload the exact acquisition file to the private bucket before running. Files larger
+than 6 MB should use Supabase resumable upload; the refresh runner does not silently
+substitute a local path. Export the credential in the process environment, then run
+the same lifecycle command. The runner:
 
 1. verifies all required PostgREST tables
-2. stages source-run and raw rows in bounded batches
-3. reads canonical rows with pagination and Chennai/source filters
-4. records inserts, updates, unchanged rows, and delete candidates
-5. writes failed rows to `staging.promotion_failures`
-6. stages approved candidates
-7. atomically promotes candidates and updates coverage/release metadata
+2. streams the private object and verifies its SHA-256
+3. stages source-run and normalized observations in bounded batches
+4. reads canonical rows with pagination and Chennai/source filters
+5. records compact inserts, updates, unchanged rows, and delete candidates
+6. writes failed row references to `staging.promotion_failures`
+7. promotes approved rows in bounded transactions
+8. reconciles the batch ledger before coverage/release metadata is committed
 
 Delete candidates never hard-delete structures in this lifecycle.
 
@@ -124,3 +136,5 @@ Do not call a refresh complete unless the lifecycle report records:
 - `failed_count = 0`
 - `release_gate_status = passed`
 - no release gate blockers
+- source object status is verified
+- completed promotion batch rows equal the manifest promoted count

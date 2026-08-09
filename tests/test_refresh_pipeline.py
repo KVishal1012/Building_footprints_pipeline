@@ -10,6 +10,7 @@ from structures_pipeline.refresh import (
     build_source_run_row,
     detect_structure_changes,
     promote_valid_changes,
+    qa_valid_canonical_rows,
     run_refresh_cycle,
     run_source_refresh,
 )
@@ -93,7 +94,10 @@ def test_source_run_metadata_and_raw_staging_shape():
     assert raw_rows[0]["source_run_id"] == source_run["source_run_id"]
     assert raw_rows[0]["raw_data_source"] == "nyc_pluto"
     assert raw_rows[0]["geometry_wkt"].startswith("POLYGON")
-    assert raw_rows[0]["raw_payload"]["StructureID"] == "s1"
+    assert raw_rows[0]["structure_id"] == "s1"
+    assert raw_rows[0]["source_object_id"].startswith("sha256:")
+    assert len(raw_rows[0]["record_checksum"]) == 64
+    assert "raw_payload" not in raw_rows[0]
     assert raw_rows[0]["data_refresh_timestamp"] == "2026-06-06T12:00:00+00:00"
 
 
@@ -121,6 +125,27 @@ def test_change_detector_records_insert_update_unchanged_and_delete_candidate():
     assert all(row["data_refresh_timestamp"] == "2026-06-06T12:00:00+00:00" for row in result["changes"])
     update = next(row for row in result["changes"] if row["change_type"] == "update")
     assert "NumStories" in update["changed_fields"]
+    assert update["field_deltas"]["NumStories"] == {"before": 5, "after": 12}
+    assert "before_payload" not in update
+    assert "after_payload" not in update
+
+
+def test_production_refresh_requires_an_archived_source_reference():
+    config = _config(refresh_require_archive=True)
+
+    try:
+        run_source_refresh(
+            "nyc_pluto",
+            "Manhattan",
+            "New York",
+            config,
+            source_frame=_frame(_row()),
+            store=InMemoryRefreshStore(),
+        )
+    except ValueError as exc:
+        assert "refresh_source_object_uri" in str(exc)
+    else:
+        raise AssertionError("Production source refresh accepted an unarchived source")
 
 
 def test_promotion_blocks_failed_qa_and_keeps_canonical_unmutated():
@@ -145,6 +170,25 @@ def test_promotion_blocks_failed_qa_and_keeps_canonical_unmutated():
     assert store.canonical_rows() == []
     assert len(store.promotion_failures) == 1
     assert store.promotion_failures[0]["source_run_id"] == source_run_id
+
+
+def test_promotion_qa_rejects_duplicate_ids_without_rejecting_unique_rows():
+    first, first_geometry = _row("duplicate")
+    second, second_geometry = _row("unique", geom=box(1, 1, 1.001, 1.001))
+    rows = [
+        {**first, "geometry_wkt": first_geometry.wkt},
+        {**first, "geometry_wkt": first_geometry.wkt},
+        {**second, "geometry_wkt": second_geometry.wkt},
+    ]
+    for row in rows:
+        row["data_refresh_timestamp"] = "2026-06-06T12:00:00+00:00"
+
+    valid, failed = qa_valid_canonical_rows(rows)
+
+    assert valid["StructureID"].tolist() == ["unique"]
+    assert len(failed) == 2
+    assert {row["StructureID"] for row in failed} == {"duplicate"}
+    assert all("duplicated StructureID" in row["reason"] for row in failed)
 
 
 def test_dry_run_does_not_mutate_store():
@@ -193,3 +237,47 @@ def test_full_refresh_cycle_promotes_valid_rows_and_writes_metadata():
     assert result["release_manifest"]["refresh_status"] == "completed"
     assert result["release_manifest"]["data_refresh_timestamp"] == "2026-06-06T12:00:00+00:00"
     assert result["release_manifest"]["quality_contract"]["release_gates"]["status"] == "passed"
+
+
+def test_full_refresh_cycle_can_resume_an_existing_staged_run():
+    store = InMemoryRefreshStore()
+    config = _config(refresh_source_run_id="resume-run", release_id="resume-release")
+    source_run = build_source_run_row("nyc_pluto", "Manhattan", "New York", config, row_count=1)
+    store.upsert_source_run(source_run)
+    store.insert_raw_rows(build_raw_structure_rows(_frame(_row()), source_run, config))
+
+    result = run_refresh_cycle(
+        "nyc_pluto",
+        "Manhattan",
+        "New York",
+        config,
+        store=store,
+        resume_staged=True,
+    )
+
+    assert result["source_run"]["metadata"]["resumed_from_staging"] is True
+    assert result["promotion"]["promoted_count"] == 1
+    assert len(store.raw_rows_for_run("resume-run")) == 1
+    assert len(store.canonical_rows()) == 1
+
+
+def test_resumed_refresh_reuses_existing_changes_without_duplicates():
+    store = InMemoryRefreshStore()
+    config = _config(refresh_source_run_id="resume-run", release_id="resume-release")
+    source_run = build_source_run_row("nyc_pluto", "Manhattan", "New York", config, row_count=1)
+    store.upsert_source_run(source_run)
+    store.insert_raw_rows(build_raw_structure_rows(_frame(_row()), source_run, config))
+    detect_structure_changes("resume-run", config, store=store)
+    original_change_ids = [row["change_id"] for row in store.changes_for_run("resume-run")]
+
+    result = run_refresh_cycle(
+        "nyc_pluto",
+        "Manhattan",
+        "New York",
+        config,
+        store=store,
+        resume_staged=True,
+    )
+
+    assert [row["change_id"] for row in store.changes_for_run("resume-run")] == original_change_ids
+    assert result["promotion"]["promoted_count"] == 1

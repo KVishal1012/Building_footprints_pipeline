@@ -14,9 +14,14 @@ CANONICAL_DATABASE_PLATFORM = "supabase_postgres"
 
 DATABASE_TABLES = (
     DatabaseTable(
-        name="staging.raw_structures",
-        role="raw_drop",
-        description="Raw upstream records and source snapshots before QA normalization.",
+        name="staging.source_objects",
+        role="source_archive_index",
+        description="Checksummed references to immutable source files in private object storage.",
+    ),
+    DatabaseTable(
+        name="staging.structure_observations",
+        role="normalized_staging",
+        description="Normalized source observations with native PostGIS geometry and no raw payload copy.",
     ),
     DatabaseTable(
         name="staging.source_runs",
@@ -24,9 +29,9 @@ DATABASE_TABLES = (
         description="One row per source ingestion run, with source vintage and status.",
     ),
     DatabaseTable(
-        name="staging.change_log",
+        name="staging.structure_changes",
         role="delta_logic",
-        description="Detected inserts, updates, deletes, and source-to-canonical changes.",
+        description="Compact field-level deltas, checksums, and geometry-change markers.",
     ),
     DatabaseTable(
         name="staging.promotion_failures",
@@ -34,9 +39,9 @@ DATABASE_TABLES = (
         description="Rows blocked by QA/provenance gates before canonical promotion.",
     ),
     DatabaseTable(
-        name="staging.promotion_candidates",
-        role="atomic_promotion_staging",
-        description="QA-approved rows held until one transaction finalizes the city refresh.",
+        name="staging.promotion_batches",
+        role="transaction_ledger",
+        description="Idempotent bounded promotion batch status without duplicated canonical payloads.",
     ),
     DatabaseTable(
         name="public.structures",
@@ -53,6 +58,31 @@ DATABASE_TABLES = (
         role="release_metadata",
         description="Versioned release package metadata and delivery manifest snapshots.",
     ),
+    DatabaseTable(
+        name="history.structure_versions",
+        role="partitioned_history",
+        description="City and source-run partitioned canonical versions and geometry history.",
+    ),
+    DatabaseTable(
+        name="public.structure_conflicts",
+        role="passport_conflicts",
+        description="Unresolved field-level disagreements between sources.",
+    ),
+    DatabaseTable(
+        name="public.structure_quality_issues",
+        role="passport_quality",
+        description="QA status, warnings, and their resolution history.",
+    ),
+    DatabaseTable(
+        name="public.structure_relationships",
+        role="passport_relationships",
+        description="Parcel, ward, hazard, and infrastructure relationships.",
+    ),
+    DatabaseTable(
+        name="public.structure_ai_suggestions",
+        role="passport_ai",
+        description="Suggest-only model output stored separately from authoritative attributes.",
+    ),
 )
 
 
@@ -64,9 +94,12 @@ def database_contract() -> list[dict]:
 
 # Return SQL DDL for the Supabase/Postgres staging and canonical tables.
 def supabase_schema_sql() -> str:
-    """Return SQL DDL for the Supabase/Postgres staging and canonical tables."""
+    """Return the current compact Supabase/Postgres contract used by new refreshes."""
     return """
 create schema if not exists staging;
+create schema if not exists history;
+create schema if not exists extensions;
+create extension if not exists postgis with schema extensions;
 
 create table if not exists staging.source_runs (
     source_run_id text primary key,
@@ -82,29 +115,48 @@ create table if not exists staging.source_runs (
     metadata jsonb not null default '{}'::jsonb
 );
 
-create table if not exists staging.raw_structures (
-    raw_record_id text primary key,
-    source_run_id text references staging.source_runs(source_run_id),
+create table if not exists staging.source_objects (
+    source_object_id text primary key,
+    bucket_id text not null,
+    object_path text not null,
+    object_uri text not null unique,
+    checksum_sha256 text not null,
+    content_type text,
+    byte_size bigint,
+    archive_status text not null,
+    uploaded_at timestamptz not null default now()
+);
+
+create table if not exists staging.structure_observations (
+    source_run_id text not null references staging.source_runs(source_run_id),
+    raw_record_id text not null,
+    source_object_id text not null references staging.source_objects(source_object_id),
+    structure_id text not null,
+    record_checksum text not null,
     raw_data_source text not null,
     source_authority text,
     source_family text not null,
     source_as_of text,
     city text,
     state text,
-    geometry_wkt text,
-    raw_payload jsonb not null,
+    geom extensions.geometry(Geometry, 4326) not null,
     loaded_at timestamptz not null default now(),
-    data_refresh_timestamp timestamptz not null
+    data_refresh_timestamp timestamptz not null,
+    primary key (source_run_id, raw_record_id)
 );
+create index if not exists structure_observations_geom_gix
+on staging.structure_observations using gist (geom);
 
-create table if not exists staging.change_log (
+create table if not exists staging.structure_changes (
     change_id text primary key,
     structure_id text,
     source_run_id text references staging.source_runs(source_run_id),
     change_type text not null,
     changed_fields jsonb not null default '[]'::jsonb,
-    before_payload jsonb,
-    after_payload jsonb,
+    field_deltas jsonb not null default '{}'::jsonb,
+    before_checksum text,
+    after_checksum text,
+    geometry_changed boolean not null default false,
     detected_at timestamptz not null default now(),
     data_refresh_timestamp timestamptz
 );
@@ -114,9 +166,18 @@ create table if not exists staging.promotion_failures (
     source_run_id text references staging.source_runs(source_run_id),
     structure_id text,
     reason text not null,
-    failed_payload jsonb not null,
+    source_record_id text,
     detected_at timestamptz not null default now(),
     data_refresh_timestamp timestamptz
+);
+
+create table if not exists staging.promotion_batches (
+    source_run_id text not null references staging.source_runs(source_run_id),
+    batch_number integer not null,
+    batch_hash text not null,
+    row_count integer not null,
+    status text not null,
+    primary key (source_run_id, batch_number)
 );
 
 create table if not exists public.structures (
@@ -126,6 +187,9 @@ create table if not exists public.structures (
     country text not null default 'USA',
     coverage_tier text not null,
     geometry_wkt text not null,
+    geom extensions.geometry(Geometry, 4326),
+    record_checksum text,
+    qa_status text not null default 'passed',
     structure_type text,
     structure_type_source text,
     structure_type_confidence numeric,
@@ -154,6 +218,8 @@ create table if not exists public.structures (
     last_refreshed timestamptz not null,
     source_as_of text
 );
+create index if not exists structures_geom_gix
+on public.structures using gist (geom);
 
 create table if not exists public.coverage_registry (
     city text not null,
@@ -174,5 +240,47 @@ create table if not exists public.release_manifest (
     schema_version text not null,
     row_count integer not null,
     manifest jsonb not null
+);
+
+create table if not exists history.structure_versions (
+    version_id bigint generated always as identity,
+    structure_id text not null,
+    city text not null,
+    source_run_id text not null,
+    record_checksum text not null,
+    geom extensions.geometry(Geometry, 4326) not null,
+    recorded_at timestamptz not null default now(),
+    primary key (city, source_run_id, version_id)
+) partition by hash (city, source_run_id);
+
+create table if not exists public.structure_conflicts (
+    conflict_id bigint generated always as identity primary key,
+    structure_id text not null,
+    attribute_name text not null,
+    status text not null default 'open'
+);
+
+create table if not exists public.structure_quality_issues (
+    issue_id bigint generated always as identity primary key,
+    structure_id text not null,
+    severity text not null,
+    status text not null default 'open',
+    message text not null
+);
+
+create table if not exists public.structure_relationships (
+    relationship_id bigint generated always as identity primary key,
+    structure_id text not null,
+    relationship_type text not null,
+    related_record_id text not null
+);
+
+create table if not exists public.structure_ai_suggestions (
+    suggestion_id bigint generated always as identity primary key,
+    structure_id text not null,
+    attribute_name text not null,
+    suggested_value jsonb not null,
+    confidence numeric not null,
+    status text not null default 'suggested'
 );
 """.strip()

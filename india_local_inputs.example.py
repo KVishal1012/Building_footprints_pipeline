@@ -19,6 +19,18 @@ SUPABASE_SERVICE_ROLE_ENV = "SUPABASE_SERVICE_ROLE_KEY"
 SUPABASE_STORE = "in_memory"
 DRY_RUN = True
 PROMOTE_TO_CANONICAL = True
+RESUME_STAGED_RUN = False
+
+# Production runs must point to a previously uploaded, immutable source file.
+# The URI is an audit reference; the runner never pretends a local file is archived.
+SOURCE_OBJECT_URI = None
+SOURCE_OBJECT_ID = None
+# Set this when the archived object is a lossless compressed representation of
+# the acquired source. The runner keeps both acquisition and object checksums.
+SOURCE_OBJECT_CHECKSUM = None
+SOURCE_ARCHIVE_BUCKET = "structure-source-archives"
+REQUIRE_SOURCE_ARCHIVE = False
+PROMOTION_BATCH_SIZE = 500
 
 # Optional deterministic override. Leave as None to stamp the current UTC time.
 DATA_REFRESH_TIMESTAMP = None

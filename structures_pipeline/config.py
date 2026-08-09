@@ -57,9 +57,17 @@ class PipelineConfig:
     refresh_source_as_of: str | None = None
     refresh_cadence: str | None = None
     refresh_source_run_id: str | None = None
+    refresh_source_object_id: str | None = None
+    refresh_source_object_uri: str | None = None
+    refresh_source_object_checksum: str | None = None
+    refresh_archive_bucket: str = "structure-source-archives"
+    refresh_require_archive: bool = False
+    refresh_verify_archive: bool = True
     data_refresh_timestamp: str | None = None
     refresh_require_nonempty: bool = True
     refresh_compact_results: bool = False
+    promotion_batch_size: int = 500
+    retention_config: dict | None = None
     supabase_batch_size: int = 500
     supabase_page_size: int = 1000
     supabase_max_retries: int = 4
@@ -91,14 +99,29 @@ class PipelineConfig:
             self.canonical_database
             or {
                 "platform": "supabase_postgres",
-                "raw_table": "staging.raw_structures",
+                "source_objects_table": "staging.source_objects",
+                "raw_table": "staging.structure_observations",
                 "source_runs_table": "staging.source_runs",
-                "change_log_table": "staging.change_log",
+                "change_log_table": "staging.structure_changes",
                 "promotion_failures_table": "staging.promotion_failures",
-                "promotion_candidates_table": "staging.promotion_candidates",
+                "promotion_batches_table": "staging.promotion_batches",
                 "canonical_table": "public.structures",
                 "coverage_table": "public.coverage_registry",
                 "release_table": "public.release_manifest",
+                "history_table": "history.structure_versions",
+                "conflicts_table": "public.structure_conflicts",
+                "quality_issues_table": "public.structure_quality_issues",
+                "relationships_table": "public.structure_relationships",
+                "ai_suggestions_table": "public.structure_ai_suggestions",
+            }
+        )
+        self.retention_config = dict(
+            self.retention_config
+            or {
+                "observations_days": 90,
+                "changes_days": 365,
+                "promotion_batches_days": 90,
+                "history_days": 2555,
             }
         )
         self.release_output_dir = Path(self.release_output_dir)

@@ -68,7 +68,12 @@ def run(settings) -> dict:
     report_path = Path(settings.ACCEPTANCE_REPORT_PATH)
     canonical, acceptance = validate_acceptance_inputs(canonical_path, report_path)
     source_as_of = str(acceptance["source_as_of"])
-    run_id = deterministic_source_run_id(source_as_of, Path(settings.OSM_BUILDINGS_PATH))
+    source_path = Path(settings.OSM_BUILDINGS_PATH)
+    source_checksum = source_sha256(source_path)
+    source_object_checksum = str(
+        getattr(settings, "SOURCE_OBJECT_CHECKSUM", None) or source_checksum
+    )
+    run_id = deterministic_source_run_id(source_as_of, source_path)
     dry_run = bool(getattr(settings, "DRY_RUN", True))
     store_name = str(getattr(settings, "SUPABASE_STORE", "in_memory"))
     config = build_india_refresh_config(
@@ -86,12 +91,24 @@ def run(settings) -> dict:
     )
     config.refresh_compact_results = True
     config.refresh_require_nonempty = True
+    config.refresh_source_object_uri = getattr(settings, "SOURCE_OBJECT_URI", None)
+    config.refresh_source_object_id = getattr(settings, "SOURCE_OBJECT_ID", None)
+    config.refresh_source_object_checksum = source_object_checksum
+    config.refresh_archive_bucket = str(
+        getattr(settings, "SOURCE_ARCHIVE_BUCKET", "structure-source-archives")
+    )
+    config.refresh_require_archive = bool(
+        getattr(settings, "REQUIRE_SOURCE_ARCHIVE", store_name == "supabase" and not dry_run)
+    )
+    config.promotion_batch_size = int(getattr(settings, "PROMOTION_BATCH_SIZE", 500))
     config.refresh_metadata.update(
         {
             "source_authority": "OpenStreetMap contributors",
             "provenance_tier": "open_community",
             "acceptance_report": str(report_path),
-            "source_sha256": source_sha256(Path(settings.OSM_BUILDINGS_PATH)),
+            "source_sha256": source_checksum,
+            "source_object_sha256": source_object_checksum,
+            "source_object_uri": config.refresh_source_object_uri,
         }
     )
     store = build_refresh_store(config, store_name)
@@ -105,6 +122,7 @@ def run(settings) -> dict:
         config,
         source_frame=canonical,
         store=store,
+        resume_staged=bool(getattr(settings, "RESUME_STAGED_RUN", False)),
     )
     lifecycle = {
         "status": "passed"
@@ -115,6 +133,11 @@ def run(settings) -> dict:
         "store": store_name,
         "source_run_id": run_id,
         "source_sha256": config.refresh_metadata["source_sha256"],
+        "source_object_sha256": config.refresh_metadata["source_object_sha256"],
+        "source_object_uri": config.refresh_source_object_uri,
+        "source_archive_verified": bool(
+            config.refresh_require_archive and config.refresh_verify_archive and not dry_run
+        ),
         "source_as_of": source_as_of,
         "data_refresh_timestamp": result["source_run"]["data_refresh_timestamp"],
         "input_rows": result["source_run"]["row_count"],
