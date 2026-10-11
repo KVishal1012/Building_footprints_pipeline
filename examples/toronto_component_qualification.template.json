@@ -1,0 +1,31 @@
+{
+  "commercial_use_review": "pending",
+  "contextual_use_review": "pending",
+  "identity_review": "pending",
+  "reviewed_by": "",
+  "reviewed_at": "",
+  "source_bundle_sha256": "",
+  "parent_geopackage_sha256": "",
+  "source_url": "https://open.toronto.ca/dataset/3d-massing/",
+  "license_url": "https://open.toronto.ca/open-data-licence/",
+  "attribution": "Contains information licensed under the Open Government Licence \u2013 Toronto.",
+  "source_as_of": null,
+  "source_crs": "EPSG:3857",
+  "height_units": "metres",
+  "lidar_reference_year": 2015,
+  "excluded_conflict_groups": 37,
+  "excluded_conflict_variants": 74,
+  "limitations": [
+    "Contextual component footprints only; no whole-building master identity.",
+    "Observation dates unknown; 2015 refers to LiDAR height source only.",
+    "No survey, precision, legal or regulatory suitability established.",
+    "Zero-height semantics and precise vertical datum remain unresolved; all heights omitted.",
+    "Buyer-specific suitability and input permissions pending."
+  ],
+  "evidence": [
+    {
+      "path": "publisher_evidence.md",
+      "sha256": "REPLACE_WITH_SHA256"
+    }
+  ]
+}
